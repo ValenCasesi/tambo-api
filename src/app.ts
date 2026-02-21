@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import prisma from "./prisma/client.js";
 import userRoutes from "./routes/user.routes.js";
+import productRoutes from "./routes/product.routes.js";
 import { swaggerDocs } from "./docs/swagger.js";
 
 const app = express();
@@ -11,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/users", userRoutes);
+app.use("/api/products", productRoutes);
 
 app.get("/", (_req, res) => res.send("tampo-api OK"));
 

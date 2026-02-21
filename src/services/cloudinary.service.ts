@@ -21,3 +21,22 @@ export async function uploadImage(dataURIorPath: string, folder: string = "tambo
         throw new Error("Error uploading image to Cloudinary");
     }
 }
+
+export async function deleteImage(imageUrl: string) {
+    try {
+        // Extract public ID from the Cloudinary URL
+        // Example URL: https://res.cloudinary.com/.../upload/v12345/tambo_products/my_image.jpg
+        const parts = imageUrl.split("/");
+        const filenameWithExt = parts.pop() || "";
+        const folder = parts.pop() || "";
+        const filename = filenameWithExt.split(".")[0]; // remove extension
+
+        const publicId = `${folder}/${filename}`;
+
+        await cloudinary.uploader.destroy(publicId);
+    } catch (error) {
+        console.error("Cloudinary delete error:", error);
+        // We log the error but don't throw to avoid interrupting the user flow if the image was already deleted in Cloudinary
+    }
+}
+
