@@ -11,8 +11,12 @@ const options = {
         },
         servers: [
             {
+                url: "/",
+                description: "Relative to current server (Vercel Prod / Local)",
+            },
+            {
                 url: "http://localhost:3000",
-                description: "Local development server",
+                description: "Local development server (Fallback)",
             }
         ],
     },
