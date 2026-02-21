@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  PRODUCTOR
+  EMPRESA
+  ADMIN
+}
+
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum TenderStatus {
+  OPEN
+  CLOSED
+  AWARDED
+}
+
+enum TamboSize {
+  CHICO // <200
+  MEDIANO // 201-600
+  GRANDE // 601-1500
+  MEGA // >1501
+}
+
+enum TamboSystem {
+  PASTORIL
+  PASTORIL_SUPLEMENTADO
+  DRY_LOT
+  FREE_STALL
+  COMPOST_BARN
+}
+
+enum Cuenca {
+  CENTRO_CBA_VILLA_MARIA
+  SANTA_FE_CENTRO
+  SANTA_FE_NORTE
+  CBA_SUR
+  ENTRE_RIOS_OESTE
+  ENTRE_RIOS_ESTE
+  CBA_NORTE
+  BSAS_OESTE
+  BSAS_ABASTO_NORTE
+  BSAS_ABASTO_SUR
+  BSAS_MAR_Y_SIERRAS
+  LA_PAMPA
+  NOA
+  NEA
+  PATAGONICA
+}
+
+// ==========================================
+// MODELOS PRINCIPALES
+// ==========================================
+
+model User {
+  id        String       @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String       @unique
+  phone     String? // WhatsApp
+  cuit      String?      @unique
+  password  String
+  imageUrl  String?
+  role      Role
+  status    EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  tambos          Tambo[]
+  products        MarketplaceProduct[]
+  tenderRequests  TenderRequest[]
+  tenderProposals TenderProposal[]
+  wonTenders      Tender[]             @relation("TenderWinner")
+  forumPosts      ForumPost[]
+  forumComments   ForumComment[]
+}
+
+model Tambo {
+  id       String       @id @default(uuid())
+  userId   String
+  name     String
+  location String // Localidad
+  province String // Provincia
+  cuenca   Cuenca
+  size     TamboSize
+  system   TamboSystem
+  status   EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  user  User               @relation(fields: [userId], references: [id])
+  stats MonthlyStatistic[]
+
+  @@index([userId])
+}
+
+// ==========================================
+// MÓDULO 1: ESTADÍSTICAS MENSUALES
+// ==========================================
+
+model MonthlyStatistic {
+  id      String @id @default(uuid())
+  tamboId String
+  month   Int // 1-12
+  year    Int // Ej: 2024
+
+  // Variables productivas (Ejemplos basados en tu contexto)
+  litersProduced Decimal  @db.Decimal(10, 2)
+  milkingCows    Int
+  avgYieldPerCow Decimal  @db.Decimal(5, 2)
+  costs          Decimal? @db.Decimal(12, 2)
+  // ... (Aquí irán las 34 variables del Excel)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  tambo Tambo @relation(fields: [tamboId], references: [id])
+
+  // Restricción: Un tambo solo puede tener un registro por mes y año
+  @@unique([tamboId, month, year])
+  // Índice para analytics (búsquedas rápidas por fecha)
+  @@index([month, year])
+}
+
+// ==========================================
+// MÓDULO 2: MARKETPLACE
+// ==========================================
+
+model MarketplaceProduct {
+  id          String       @id @default(uuid())
+  producerId  String
+  name        String
+  description String       @db.Text
+  category    String
+  price       Decimal      @db.Decimal(10, 2)
+  unit        String
+  images      Json // Array de URLs
+  location    String
+  isAvailable Boolean      @default(true)
+  status      EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  producer User @relation(fields: [producerId], references: [id])
+
+  @@index([producerId])
+  @@index([category])
+}
+
+// ==========================================
+// MÓDULO 3: LICITACIONES
+// ==========================================
+
+model Tender {
+  id          String       @id @default(uuid())
+  description String       @db.Text
+  type        String
+  startDate   DateTime
+  endDate     DateTime
+  status      TenderStatus @default(OPEN)
+  winnerId    String? // Empresa ganadora (definida por el Admin)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  requests  TenderRequest[]
+  proposals TenderProposal[]
+  winner    User?            @relation("TenderWinner", fields: [winnerId], references: [id])
+
+  @@index([status])
+}
+
+model TenderRequest {
+  id               String  @id @default(uuid())
+  tenderId         String
+  producerId       String
+  requestedProduct String
+  quantity         Int
+  notes            String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  tender   Tender @relation(fields: [tenderId], references: [id])
+  producer User   @relation(fields: [producerId], references: [id])
+
+  @@index([tenderId])
+}
+
+model TenderProposal {
+  id         String  @id @default(uuid())
+  tenderId   String
+  companyId  String
+  price      Decimal @db.Decimal(10, 2)
+  conditions String  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  tender  Tender @relation(fields: [tenderId], references: [id])
+  company User   @relation(fields: [companyId], references: [id])
+
+  @@unique([tenderId, companyId]) // Una empresa envía una propuesta por licitación
+}
+
+// ==========================================
+// MÓDULO 4: FOROS
+// ==========================================
+
+model ForumPost {
+  id       String       @id @default(uuid())
+  authorId String
+  title    String
+  content  String       @db.Text
+  status   EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  author   User           @relation(fields: [authorId], references: [id])
+  comments ForumComment[]
+
+  @@index([authorId])
+}
+
+model ForumComment {
+  id       String       @id @default(uuid())
+  postId   String
+  authorId String
+  parentId String? // Para sub-comentarios (hilos)
+  content  String       @db.Text
+  status   EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  post    ForumPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User           @relation(fields: [authorId], references: [id])
+  parent  ForumComment?  @relation("CommentToComment", fields: [parentId], references: [id])
+  replies ForumComment[] @relation("CommentToComment")
+
+  @@index([postId])
+  @@index([parentId])
+}
