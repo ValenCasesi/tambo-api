@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { createUser } from "../services/user.service.js";
+import { createUser, updateUser, getAllUsers, deleteUser } from "../services/user.service.js";
+import { uploadImage } from "../services/cloudinary.service.js";
 const createUserSchema = z.object({
     firstName: z.string().min(1),
     lastName: z.string().min(1),
@@ -12,7 +13,16 @@ const createUserSchema = z.object({
 });
 export async function createUserHandler(req, res) {
     try {
-        const parsed = createUserSchema.parse(req.body);
+        let imageUrl = undefined;
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString("base64");
+            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            imageUrl = await uploadImage(dataURI);
+        }
+        const parsed = createUserSchema.parse({
+            ...req.body,
+            imageUrl: imageUrl || req.body.imageUrl,
+        });
         const user = await createUser(parsed);
         return res.status(201).json(user);
     }
@@ -24,6 +34,67 @@ export async function createUserHandler(req, res) {
             return res.status(400).json({ error: "Validation error", details: err.issues });
         }
         console.error("createUserHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+const updateUserSchema = z.object({
+    firstName: z.string().min(1).optional(),
+    lastName: z.string().min(1).optional(),
+    email: z.string().email().optional(),
+    password: z.string().min(6).optional(),
+    role: z.enum(["PRODUCTOR", "EMPRESA", "ADMIN"]).optional(),
+    phone: z.string().optional().nullable(),
+    cuit: z.string().optional().nullable(),
+    imageUrl: z.string().url().optional().nullable(),
+});
+export async function updateUserHandler(req, res) {
+    try {
+        const id = req.params.id;
+        let imageUrl = undefined;
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString("base64");
+            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            imageUrl = await uploadImage(dataURI);
+        }
+        const parsed = updateUserSchema.parse({
+            ...req.body,
+            ...(imageUrl ? { imageUrl } : {}),
+        });
+        const user = await updateUser({ id, ...parsed });
+        return res.status(200).json(user);
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        if (err?.issues) {
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        }
+        console.error("updateUserHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function getAllUsersHandler(req, res) {
+    try {
+        const users = await getAllUsers();
+        return res.status(200).json(users);
+    }
+    catch (err) {
+        console.error("getAllUsersHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function deleteUserHandler(req, res) {
+    try {
+        const id = req.params.id;
+        const result = await deleteUser(id);
+        return res.status(200).json(result);
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("deleteUserHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

@@ -1,7 +1,6 @@
-// src/app.ts
 import cors from "cors";
 import express from "express";
-import prisma from "./prisma/client.js"; // <--- usar la instancia compartida
+import prisma from "./prisma/client.js";
 import userRoutes from "./routes/user.routes.js";
 
 const app = express();

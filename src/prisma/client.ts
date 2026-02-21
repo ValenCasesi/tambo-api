@@ -1,4 +1,3 @@
-// src/prisma/client.ts
 import { PrismaClient } from "@prisma/client";
 import "dotenv/config"; // carga .env antes de crear PrismaClient
 
