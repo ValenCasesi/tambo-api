@@ -27,10 +27,18 @@ const options = {
 };
 // Docs in JSON format
 const swaggerSpec = swaggerJSDoc(options);
+const CSS_URL = "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.min.css";
 // Function to setup our docs
 export const swaggerDocs = (app) => {
     // Route-Handler to visit our docs
-    app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+        customCss: '.swagger-ui .opblock .opblock-summary-path-description-wrapper { align-items: center; display: flex; flex-wrap: wrap; gap: 0 10px; padding: 0 10px; width: 100%; }',
+        customCssUrl: CSS_URL,
+        customJs: [
+            "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-bundle.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-standalone-preset.js",
+        ],
+    }));
     // Make our docs in JSON format available
     app.get("/api/docs.json", (req, res) => {
         res.setHeader("Content-Type", "application/json");
