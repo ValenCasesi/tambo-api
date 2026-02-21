@@ -106,8 +106,9 @@ model Tambo {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  user  User               @relation(fields: [userId], references: [id])
-  stats MonthlyStatistic[]
+  user    User               @relation(fields: [userId], references: [id])
+  stats   MonthlyStatistic[]
+  periods PeriodStatistic[]
 
   @@index([userId])
 }
@@ -119,15 +120,31 @@ model Tambo {
 model MonthlyStatistic {
   id      String @id @default(uuid())
   tamboId String
+  period  String // Formato YYYYMM (ej: "202602"). Primary key lógica para el frontend.
   month   Int // 1-12
-  year    Int // Ej: 2024
+  year    Int // Ej: 2026
 
-  // Variables productivas (Ejemplos basados en tu contexto)
-  litersProduced Decimal  @db.Decimal(10, 2)
-  milkingCows    Int
-  avgYieldPerCow Decimal  @db.Decimal(5, 2)
-  costs          Decimal? @db.Decimal(12, 2)
-  // ... (Aquí irán las 34 variables del Excel)
+  // ==========================================
+  // VARIABLES INGRESADAS (Ejemplos iniciales)
+  // ==========================================
+  partosVaquillonas Decimal @db.Decimal(10, 2)
+  partosVacas       Decimal @db.Decimal(10, 2)
+  vacasOrdene       Decimal @db.Decimal(10, 2)
+  vacasSecas        Decimal @db.Decimal(10, 2)
+  litrosUsina       Decimal @db.Decimal(12, 2)
+  litrosDescarte    Decimal @db.Decimal(10, 2)
+  litrosGuachera    Decimal @db.Decimal(10, 2)
+  ternerosMuertos   Decimal @db.Decimal(10, 2)
+  // Aquí se agregarían las ~25 variables restantes...
+
+  // ==========================================
+  // MÉTRICAS CALCULADAS (Cacheables en la BD)
+  // ==========================================
+  partosTotales        Decimal @db.Decimal(10, 2) // partosVaquillonas + partosVacas
+  vacasTotales         Decimal @db.Decimal(10, 2) // vacasOrdene + vacasSecas
+  promedioLitrosVaca   Decimal @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
+  porcentajeNatimortos Decimal @db.Decimal(5, 2) // (ternerosMuertos * 100) / partosTotales
+  // Aquí se agregarían los ~36 cálculos restantes...
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -135,10 +152,41 @@ model MonthlyStatistic {
   // Relaciones
   tambo Tambo @relation(fields: [tamboId], references: [id])
 
-  // Restricción: Un tambo solo puede tener un registro por mes y año
-  @@unique([tamboId, month, year])
+  // Restricción: Un tambo solo puede tener un registro por periodo "YYYYMM"
+  @@unique([tamboId, period])
   // Índice para analytics (búsquedas rápidas por fecha)
   @@index([month, year])
+}
+
+model PeriodStatistic {
+  id        String   @id @default(uuid())
+  tamboId   String
+  startDate DateTime
+  endDate   DateTime
+
+  // ==========================================
+  // VARIABLES INGRESADAS (Ciclos de 21 días)
+  // ==========================================
+  variableCicloA Decimal @db.Decimal(10, 2)
+  variableCicloB Decimal @db.Decimal(10, 2)
+  variableCicloC Decimal @db.Decimal(10, 2)
+
+  // ==========================================
+  // MÉTRICAS CALCULADAS (Ciclos de 21 días)
+  // ==========================================
+  calculoCicloA Decimal @db.Decimal(10, 2)
+  calculoCicloB Decimal @db.Decimal(10, 2)
+  calculoCicloC Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  tambo Tambo @relation(fields: [tamboId], references: [id])
+
+  // Restricción: Un tambo no puede tener 2 ciclos que inicien el mismo día (evita duplicados)
+  @@unique([tamboId, startDate, endDate])
+  @@index([startDate])
 }
 
 // ==========================================

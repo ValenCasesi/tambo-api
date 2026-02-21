@@ -3,6 +3,8 @@ import express from "express";
 import prisma from "./prisma/client.js";
 import userRoutes from "./routes/user.routes.js";
 import productRoutes from "./routes/product.routes.js";
+import statsRoutes from "./routes/stats.routes.js";
+import tamboRoutes from "./routes/tambo.routes.js";
 import { swaggerDocs } from "./docs/swagger.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,6 +12,8 @@ app.use(cors());
 app.use(express.json());
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/stats", statsRoutes);
+app.use("/api/tambos", tamboRoutes);
 app.get("/", (_req, res) => res.send("tampo-api OK"));
 // Initialize swagger docs
 swaggerDocs(app);
