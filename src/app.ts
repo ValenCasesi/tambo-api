@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import prisma from "./prisma/client.js";
 import userRoutes from "./routes/user.routes.js";
+import { swaggerDocs } from "./docs/swagger.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,9 @@ app.use(express.json());
 app.use("/api/users", userRoutes);
 
 app.get("/", (_req, res) => res.send("tampo-api OK"));
+
+// Initialize swagger docs
+swaggerDocs(app);
 
 if (process.env.NODE_ENV !== "production") {
     app.listen(PORT, async () => {

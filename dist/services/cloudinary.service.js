@@ -6,7 +6,7 @@ cloudinary.config({
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_SECRET_KEY,
 });
-export async function uploadImage(dataURIorPath, folder = "tamo_users") {
+export async function uploadImage(dataURIorPath, folder = "tambo_users") {
     try {
         const result = await cloudinary.uploader.upload(dataURIorPath, {
             folder,
