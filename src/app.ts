@@ -13,13 +13,17 @@ app.use("/api/users", userRoutes);
 
 app.get("/", (_req, res) => res.send("tampo-api OK"));
 
-app.listen(PORT, async () => {
-    // Opcional: probá la conexión a la DB al arrancar
-    try {
-        await prisma.$connect();
-        console.log(`Server running on http://localhost:${PORT}`);
-    } catch (err) {
-        console.error("Failed connecting to DB at startup:", err);
-        process.exit(1);
-    }
-});
+if (process.env.NODE_ENV !== "production") {
+    app.listen(PORT, async () => {
+        // Opcional: probá la conexión a la DB al arrancar
+        try {
+            await prisma.$connect();
+            console.log(`Server running on http://localhost:${PORT}`);
+        } catch (err) {
+            console.error("Failed connecting to DB at startup:", err);
+            process.exit(1);
+        }
+    });
+}
+
+export default app;
