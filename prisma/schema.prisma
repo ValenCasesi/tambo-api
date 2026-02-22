@@ -108,7 +108,7 @@ model Tambo {
   // Relaciones
   user    User               @relation(fields: [userId], references: [id])
   stats   MonthlyStatistic[]
-  periods PeriodStatistic[]
+  periods DateStatistic[]
 
   @@index([userId])
 }
@@ -158,7 +158,7 @@ model MonthlyStatistic {
   @@index([month, year])
 }
 
-model PeriodStatistic {
+model DateStatistic {
   id        String   @id @default(uuid())
   tamboId   String
   startDate DateTime
@@ -314,4 +314,20 @@ model ForumComment {
 
   @@index([postId])
   @@index([parentId])
+}
+
+// ==========================================
+// MÓDULO 5: SPONSORS (Isla)
+// ==========================================
+
+model Sponsor {
+  id          String       @id @default(uuid())
+  name        String
+  description String?      @db.Text
+  imageUrl    String
+  youtubeUrl  String?
+  status      EntityStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
