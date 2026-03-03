@@ -7,6 +7,7 @@ import statsRoutes from "./routes/stats.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import tamboRoutes from "./routes/tambo.routes.js";
 import sponsorRoutes from "./routes/sponsor.routes.js";
+import forumRoutes from "./routes/forum.routes.js";
 import { swaggerDocs } from "./docs/swagger.js";
 
 const app = express();
@@ -21,6 +22,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/tambos", tamboRoutes);
 app.use("/api/sponsors", sponsorRoutes);
+app.use("/api/forum", forumRoutes);
 
 app.get("/", (_req, res) => res.send("tampo-api OK"));
 

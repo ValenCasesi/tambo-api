@@ -283,6 +283,7 @@ model ForumPost {
   authorId String
   title    String
   content  String       @db.Text
+  category String
   status   EntityStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
@@ -293,6 +294,7 @@ model ForumPost {
   comments ForumComment[]
 
   @@index([authorId])
+  @@index([category])
 }
 
 model ForumComment {
