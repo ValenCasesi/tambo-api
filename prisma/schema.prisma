@@ -163,20 +163,21 @@ model DateStatistic {
   tamboId   String
   startDate DateTime
   endDate   DateTime
+  year      Int // Año del ciclo para filtrado anual eficiente
 
   // ==========================================
   // VARIABLES INGRESADAS (Ciclos de 21 días)
   // ==========================================
-  variableCicloA Decimal @db.Decimal(10, 2)
-  variableCicloB Decimal @db.Decimal(10, 2)
-  variableCicloC Decimal @db.Decimal(10, 2)
+  vacasElegidas  Decimal @db.Decimal(10, 2) // Vacas elegidas para el análisis reproductivo
+  vacasEnCelo    Decimal @db.Decimal(10, 2) // Vacas vistas en celo
+  vacasPreniadas Decimal @db.Decimal(10, 2) // Vacas preñadas
 
   // ==========================================
   // MÉTRICAS CALCULADAS (Ciclos de 21 días)
   // ==========================================
-  calculoCicloA Decimal @db.Decimal(10, 2)
-  calculoCicloB Decimal @db.Decimal(10, 2)
-  calculoCicloC Decimal @db.Decimal(10, 2)
+  porcentajeCelo    Decimal @db.Decimal(10, 4) // % de celo de vacas
+  porcentajePreniez Decimal @db.Decimal(10, 4) // % de preñez de vacas
+  tasaPreniez       Decimal @db.Decimal(10, 4) // Tasa de preñez de vacas
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -187,6 +188,7 @@ model DateStatistic {
   // Restricción: Un tambo no puede tener 2 ciclos que inicien el mismo día (evita duplicados)
   @@unique([tamboId, startDate, endDate])
   @@index([startDate])
+  @@index([tamboId, year])
 }
 
 // ==========================================
