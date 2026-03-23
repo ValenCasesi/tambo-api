@@ -24,9 +24,11 @@ enum EntityStatus {
 }
 
 enum TenderStatus {
-  OPEN
-  CLOSED
-  AWARDED
+  DRAFT               // Admin editando antes de publicar
+  ACCEPTING_REQUESTS  // Productores cargan pedidos
+  ACCEPTING_PROPOSALS // Empresas cargan ofertas
+  CLOSED              // Cierre automático por fecha
+  AWARDED             // Admin eligió ganador, resultado publicado
 }
 
 enum TamboSize {
@@ -223,57 +225,74 @@ model MarketplaceProduct {
 // ==========================================
 
 model Tender {
-  id          String       @id @default(uuid())
-  description String       @db.Text
-  type        String
-  startDate   DateTime
-  endDate     DateTime
-  status      TenderStatus @default(OPEN)
-  winnerId    String? // Empresa ganadora (definida por el Admin)
+  id                  String       @id @default(uuid())
+  title               String                          // Nombre descriptivo
+  product             String                          // Ej: "Núcleo Mineral"
+  specifications      String       @db.Text           // Especificaciones técnicas
+  totalVolume         Decimal      @db.Decimal(12, 2)
+  volumeUnit          String                          // Ej: "toneladas", "unidades"
+  deliveryConditions  String       @db.Text
+  paymentOptions      Json                            // Array de strings: ["contado","30 días"]
+  status              TenderStatus @default(DRAFT)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  requestStartDate    DateTime                        // Inicio: productores cargan pedidos
+  requestDeadline     DateTime                        // Corte: fin de carga de pedidos
+  proposalStartDate   DateTime                        // Inicio: empresas cargan ofertas
+  proposalDeadline    DateTime                        // Cierre exacto de recepción de ofertas
 
-  // Relaciones
-  requests  TenderRequest[]
-  proposals TenderProposal[]
-  winner    User?            @relation("TenderWinner", fields: [winnerId], references: [id])
+  winnerId            String?                         // Empresa adjudicada por el Admin
+  awardedAt           DateTime?                       // Cuando el Admin publicó el resultado
+  closedAt            DateTime?                       // Timestamp automático del cierre
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  requests            TenderRequest[]
+  proposals           TenderProposal[]
+  winner              User?        @relation("TenderWinner", fields: [winnerId], references: [id])
 
   @@index([status])
 }
 
 model TenderRequest {
-  id               String  @id @default(uuid())
-  tenderId         String
-  producerId       String
-  requestedProduct String
-  quantity         Int
-  notes            String? @db.Text
+  id         String   @id @default(uuid())
+  tenderId   String
+  producerId String
+  quantity   Decimal  @db.Decimal(12, 2)  // En la unidad del tender
+  notes      String?  @db.Text
 
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  // Relaciones
-  tender   Tender @relation(fields: [tenderId], references: [id])
-  producer User   @relation(fields: [producerId], references: [id])
+  tender     Tender   @relation(fields: [tenderId], references: [id])
+  producer   User     @relation(fields: [producerId], references: [id])
 
+  @@unique([tenderId, producerId])    // Un productor, un pedido por licitación
   @@index([tenderId])
 }
 
 model TenderProposal {
-  id         String  @id @default(uuid())
-  tenderId   String
-  companyId  String
-  price      Decimal @db.Decimal(10, 2)
-  conditions String  @db.Text
+  id                  String    @id @default(uuid())
+  proposalCode        String    @unique              // Ej: "PROP-2026-A3F2"
+  tenderId            String
+  companyId           String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  pricePerUnit        Decimal   @db.Decimal(12, 2)
+  paymentMethod       String                         // Según opciones del tender
+  logisticsConditions String    @db.Text
+  offerValidity       String                         // Ej: "30 días desde envío"
 
-  // Relaciones
-  tender  Tender @relation(fields: [tenderId], references: [id])
-  company User   @relation(fields: [companyId], references: [id])
+  isSubmitted         Boolean   @default(false)      // Bloqueada al enviar
+  submittedAt         DateTime?                      // Fecha/hora exacta de envío
 
-  @@unique([tenderId, companyId]) // Una empresa envía una propuesta por licitación
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tender              Tender    @relation(fields: [tenderId], references: [id])
+  company             User      @relation(fields: [companyId], references: [id])
+
+  @@unique([tenderId, companyId])     // Una empresa, una oferta por licitación
+  @@index([tenderId])
 }
 
 // ==========================================

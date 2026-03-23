@@ -19,7 +19,8 @@ export async function upsertDateStatistic(input) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo)
         throw { status: 404, message: "Tambo no encontrado" };
-    const year = new Date(startDate).getFullYear();
+    const year = new Date(startDate).getUTCFullYear();
+    console.log(year);
     const { porcentajeCelo, porcentajePreniez, tasaPreniez } = calcular(vacasElegidas, vacasEnCelo, vacasPreniadas);
     return await prisma.dateStatistic.upsert({
         where: {
