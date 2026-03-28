@@ -14,6 +14,11 @@ async function syncYearlyProjections(tamboId, year) {
     let sumTotalTernerosMuertos = 0;
     let sumCantTernerasHembrasIngRecria = 0;
     let sumCantHembrasRecriaHastaServMuertas = 0;
+    // Phase 2 additions
+    let sumRefugoTotalVacas = 0;
+    let sumCantVacasMuertasMes = 0;
+    let sumCantVacasVendidasMes = 0;
+    let sumVacasTotales = 0;
     for (const record of months) {
         // We accumulate only what is present
         sumPartosTotales += Number(record.partosTotales || 0);
@@ -22,6 +27,10 @@ async function syncYearlyProjections(tamboId, year) {
         sumTotalTernerosMuertos += Number(record.totalTernerosMuertos || 0);
         sumCantTernerasHembrasIngRecria += Number(record.cantTernerasHembrasIngRecria || 0);
         sumCantHembrasRecriaHastaServMuertas += Number(record.cantHembrasRecriaHastaServMuertas || 0);
+        sumRefugoTotalVacas += Number(record.refugoTotalVacas || 0);
+        sumCantVacasMuertasMes += Number(record.cantVacasMuertasMes || 0);
+        sumCantVacasVendidasMes += Number(record.cantVacasVendidasMes || 0);
+        sumVacasTotales += Number(record.vacasTotales || 0);
         // Compute running YTD formulas
         let proyeccionAnualNatimortos = null;
         if (sumPartosTotales > 0 && record.ternerosMuertosPeriparto != null) {
@@ -35,19 +44,36 @@ async function syncYearlyProjections(tamboId, year) {
         if (sumCantTernerasHembrasIngRecria > 0 && record.cantHembrasRecriaHastaServMuertas != null) {
             proyeccionAnualMortandadRecria = (sumCantHembrasRecriaHastaServMuertas * 100) / sumCantTernerasHembrasIngRecria;
         }
+        let proyeccionAnualRefugoTotalVacas = null;
+        if (sumVacasTotales > 0 && record.refugoTotalVacas != null) {
+            proyeccionAnualRefugoTotalVacas = (sumRefugoTotalVacas * 100) / (sumVacasTotales / 12);
+        }
+        let proyeccionAnualVacasMuertas = null;
+        if (sumVacasTotales > 0 && record.cantVacasMuertasMes != null) {
+            proyeccionAnualVacasMuertas = (sumCantVacasMuertasMes * 100) / (sumVacasTotales / 12);
+        }
+        let proyeccionAnualVacasVendidas = null;
+        if (sumVacasTotales > 0 && record.cantVacasVendidasMes != null) {
+            proyeccionAnualVacasVendidas = (sumCantVacasVendidasMes * 100) / (sumVacasTotales / 12);
+        }
         // Only update these fields
         await prisma.monthlyStatistic.update({
             where: { id: record.id },
             data: {
                 proyeccionAnualNatimortos,
                 proyeccionAnualTernerosMuertosGuachera,
-                proyeccionAnualMortandadRecria
+                proyeccionAnualMortandadRecria,
+                proyeccionAnualRefugoTotalVacas,
+                proyeccionAnualVacasMuertas,
+                proyeccionAnualVacasVendidas
             }
         });
     }
 }
 export async function upsertMonthlyStatistic(input) {
-    const { tamboId, period, partosVaquillonas, partosVacas, vacasOrdene, vacasSecas, litrosUsina, litrosDescarte, litrosGuachera, ternerosMuertosPeriparto, ternerosMachosNacidosVivos, ternerasHembrasNacidasVivas, cantNacimientosMellizos, ternerosMachosMuertosGuachera, ternerasHembrasMuertasGuachera, cantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas } = input;
+    const { tamboId, period,
+    // ... inputs will be safely grabbed and coalesced
+     } = input;
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo)
         throw { status: 404, message: "Tambo not found" };
@@ -72,6 +98,9 @@ export async function upsertMonthlyStatistic(input) {
     const vTernerasHembrasMuertasGuachera = input.ternerasHembrasMuertasGuachera !== undefined ? input.ternerasHembrasMuertasGuachera : (existing && existing.ternerasHembrasMuertasGuachera != null ? Number(existing.ternerasHembrasMuertasGuachera) : null);
     const vCantTernerasHembrasIngRecria = input.cantTernerasHembrasIngRecria !== undefined ? input.cantTernerasHembrasIngRecria : (existing && existing.cantTernerasHembrasIngRecria != null ? Number(existing.cantTernerasHembrasIngRecria) : null);
     const vCantHembrasRecriaHastaServMuertas = input.cantHembrasRecriaHastaServMuertas !== undefined ? input.cantHembrasRecriaHastaServMuertas : (existing && existing.cantHembrasRecriaHastaServMuertas != null ? Number(existing.cantHembrasRecriaHastaServMuertas) : null);
+    const vEdadVaquillonasPrimerServicioMeses = input.edadVaquillonasPrimerServicioMeses !== undefined ? input.edadVaquillonasPrimerServicioMeses : (existing && existing.edadVaquillonasPrimerServicioMeses != null ? Number(existing.edadVaquillonasPrimerServicioMeses) : null);
+    const vCantVacasMuertasMes = input.cantVacasMuertasMes !== undefined ? input.cantVacasMuertasMes : (existing && existing.cantVacasMuertasMes != null ? Number(existing.cantVacasMuertasMes) : null);
+    const vCantVacasVendidasMes = input.cantVacasVendidasMes !== undefined ? input.cantVacasVendidasMes : (existing && existing.cantVacasVendidasMes != null ? Number(existing.cantVacasVendidasMes) : null);
     // Base Calculations
     const partosTotales = vPartosVaquillonas + vPartosVacas;
     const vacasTotales = vVacasOrdene + vVacasSecas;
@@ -99,15 +128,42 @@ export async function upsertMonthlyStatistic(input) {
     if (vCantTernerasHembrasIngRecria != null && vCantTernerasHembrasIngRecria > 0 && vCantHembrasRecriaHastaServMuertas != null) {
         porcentajeMortandadRecriaMes = (vCantHembrasRecriaHastaServMuertas * 100) / vCantTernerasHembrasIngRecria;
     }
+    let refugoTotalVacas = null;
+    if (vCantVacasMuertasMes != null && vCantVacasVendidasMes != null) {
+        refugoTotalVacas = vCantVacasMuertasMes + vCantVacasVendidasMes;
+    }
+    let porcentajeRefugoVacasMes = null;
+    if (refugoTotalVacas != null && vacasTotales > 0) {
+        porcentajeRefugoVacasMes = (refugoTotalVacas * 100) / vacasTotales;
+    }
+    let porcentajeRefugoVacasMensual = null;
+    if (refugoTotalVacas != null && vacasTotales > 0) {
+        porcentajeRefugoVacasMensual = (refugoTotalVacas * 100) / (vacasTotales / 12);
+    }
+    let porcentajeVacasMuertasMes = null;
+    if (vCantVacasMuertasMes != null && vacasTotales > 0) {
+        porcentajeVacasMuertasMes = (vCantVacasMuertasMes * 100) / vacasTotales;
+    }
+    let porcentajeVacasMuertasMensual = null;
+    if (vCantVacasMuertasMes != null && vacasTotales > 0) {
+        porcentajeVacasMuertasMensual = (vCantVacasMuertasMes * 100) / (vacasTotales / 12);
+    }
+    let porcentajeVacasVendidas = null;
+    if (vCantVacasVendidasMes != null && vacasTotales > 0) {
+        porcentajeVacasVendidas = (vCantVacasVendidasMes * 100) / (vacasTotales / 12);
+    }
     const dataPayload = {
         partosVaquillonas: vPartosVaquillonas, partosVacas: vPartosVacas, vacasOrdene: vVacasOrdene, vacasSecas: vVacasSecas,
         litrosUsina: vLitrosUsina, litrosDescarte: vLitrosDescarte, litrosGuachera: vLitrosGuachera,
         ternerosMuertosPeriparto: vTernerosMuertosPeriparto, ternerosMachosNacidosVivos: vTernerosMachosNacidosVivos, ternerasHembrasNacidasVivas: vTernerasHembrasNacidasVivas,
         cantNacimientosMellizos: vCantNacimientosMellizos, ternerosMachosMuertosGuachera: vTernerosMachosMuertosGuachera, ternerasHembrasMuertasGuachera: vTernerasHembrasMuertasGuachera,
         cantTernerasHembrasIngRecria: vCantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas: vCantHembrasRecriaHastaServMuertas,
+        edadVaquillonasPrimerServicioMeses: vEdadVaquillonasPrimerServicioMeses, cantVacasMuertasMes: vCantVacasMuertasMes, cantVacasVendidasMes: vCantVacasVendidasMes,
         partosTotales, vacasTotales, promedioLitrosVaca,
         porcentajeNatimortos, totalTernerosNacidosVivos, totalTernerosMuertos,
-        porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes
+        porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes,
+        refugoTotalVacas, porcentajeRefugoVacasMes, porcentajeRefugoVacasMensual,
+        porcentajeVacasMuertasMes, porcentajeVacasMuertasMensual, porcentajeVacasVendidas
     };
     let result;
     if (existing) {
@@ -150,7 +206,10 @@ export async function getAnnualStatistics(tamboId, year) {
             totalTernerosNacidosVivos: true,
             totalTernerosMuertos: true,
             cantTernerasHembrasIngRecria: true,
-            cantHembrasRecriaHastaServMuertas: true
+            cantHembrasRecriaHastaServMuertas: true,
+            refugoTotalVacas: true,
+            cantVacasMuertasMes: true,
+            cantVacasVendidasMes: true
         }
     });
     const sum = aggregates._sum;
@@ -162,6 +221,10 @@ export async function getAnnualStatistics(tamboId, year) {
     const sTotalTernerosMuertos = Number(sum.totalTernerosMuertos || 0);
     const sCantTernerasHembrasIngRecria = Number(sum.cantTernerasHembrasIngRecria || 0);
     const sCantHembrasRecriaHastaServMuertas = Number(sum.cantHembrasRecriaHastaServMuertas || 0);
+    const sRefugoTotalVacas = Number(sum.refugoTotalVacas || 0);
+    const sCantVacasMuertasMes = Number(sum.cantVacasMuertasMes || 0);
+    const sCantVacasVendidasMes = Number(sum.cantVacasVendidasMes || 0);
+    const sVacasTotales = Number(sum.vacasTotales || 0);
     const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
     const daysInYear = isLeap ? 366 : 365;
     // Dynamic Complex Year-to-Date Calcs for the whole year combined
@@ -176,6 +239,18 @@ export async function getAnnualStatistics(tamboId, year) {
     let annualProyeccionMortandadRecria = null;
     if (sCantTernerasHembrasIngRecria > 0) {
         annualProyeccionMortandadRecria = (sCantHembrasRecriaHastaServMuertas * 100) / sCantTernerasHembrasIngRecria;
+    }
+    let proyeccionAnualRefugoTotalVacas = null;
+    if (sVacasTotales > 0) {
+        proyeccionAnualRefugoTotalVacas = (sRefugoTotalVacas * 100) / (sVacasTotales / 12);
+    }
+    let proyeccionAnualVacasMuertas = null;
+    if (sVacasTotales > 0) {
+        proyeccionAnualVacasMuertas = (sCantVacasMuertasMes * 100) / (sVacasTotales / 12);
+    }
+    let proyeccionAnualVacasVendidas = null;
+    if (sVacasTotales > 0) {
+        proyeccionAnualVacasVendidas = (sCantVacasVendidasMes * 100) / (sVacasTotales / 12);
     }
     const monthsReported = await prisma.monthlyStatistic.count({
         where: { tamboId, year }
@@ -196,7 +271,10 @@ export async function getAnnualStatistics(tamboId, year) {
             totalTernerosNacidosVivos: sTotalTernerosNacidosVivos,
             totalTernerosMuertos: sTotalTernerosMuertos,
             cantTernerasHembrasIngRecria: sCantTernerasHembrasIngRecria,
-            cantHembrasRecriaHastaServMuertas: sCantHembrasRecriaHastaServMuertas
+            cantHembrasRecriaHastaServMuertas: sCantHembrasRecriaHastaServMuertas,
+            refugoTotalVacas: sRefugoTotalVacas,
+            cantVacasMuertasMes: sCantVacasMuertasMes,
+            cantVacasVendidasMes: sCantVacasVendidasMes
         },
         averages: {
             vacasOrdene: averageVacasOrdeneAnual,
@@ -207,7 +285,10 @@ export async function getAnnualStatistics(tamboId, year) {
             porcentajeNatimortos: annualPorcentajeNatimortos !== null ? Number(annualPorcentajeNatimortos.toFixed(2)) : null,
             promedioLitrosVaca: Number(annualPromedioLitrosVaca.toFixed(2)),
             proyeccionAnualTernerosMuertosGuachera: annualProyeccionTernerosMuertosGuachera !== null ? Number(annualProyeccionTernerosMuertosGuachera.toFixed(2)) : null,
-            proyeccionAnualMortandadRecria: annualProyeccionMortandadRecria !== null ? Number(annualProyeccionMortandadRecria.toFixed(2)) : null
+            proyeccionAnualMortandadRecria: annualProyeccionMortandadRecria !== null ? Number(annualProyeccionMortandadRecria.toFixed(2)) : null,
+            proyeccionAnualRefugoTotalVacas: proyeccionAnualRefugoTotalVacas !== null ? Number(proyeccionAnualRefugoTotalVacas.toFixed(2)) : null,
+            proyeccionAnualVacasMuertas: proyeccionAnualVacasMuertas !== null ? Number(proyeccionAnualVacasMuertas.toFixed(2)) : null,
+            proyeccionAnualVacasVendidas: proyeccionAnualVacasVendidas !== null ? Number(proyeccionAnualVacasVendidas.toFixed(2)) : null
         }
     };
 }
@@ -246,6 +327,9 @@ export async function updateMonthlyStatistic(id, data) {
     const ternerasHembrasMuertasGuachera = merged.ternerasHembrasMuertasGuachera != null ? Number(merged.ternerasHembrasMuertasGuachera) : null;
     const cantTernerasHembrasIngRecria = merged.cantTernerasHembrasIngRecria != null ? Number(merged.cantTernerasHembrasIngRecria) : null;
     const cantHembrasRecriaHastaServMuertas = merged.cantHembrasRecriaHastaServMuertas != null ? Number(merged.cantHembrasRecriaHastaServMuertas) : null;
+    const edadVaquillonasPrimerServicioMeses = merged.edadVaquillonasPrimerServicioMeses != null ? Number(merged.edadVaquillonasPrimerServicioMeses) : null;
+    const cantVacasMuertasMes = merged.cantVacasMuertasMes != null ? Number(merged.cantVacasMuertasMes) : null;
+    const cantVacasVendidasMes = merged.cantVacasVendidasMes != null ? Number(merged.cantVacasVendidasMes) : null;
     const month = existing.month;
     const year = existing.year;
     const diasMes = new Date(year, month, 0).getDate();
@@ -274,6 +358,30 @@ export async function updateMonthlyStatistic(id, data) {
     if (cantTernerasHembrasIngRecria != null && cantTernerasHembrasIngRecria > 0 && cantHembrasRecriaHastaServMuertas != null) {
         porcentajeMortandadRecriaMes = (cantHembrasRecriaHastaServMuertas * 100) / cantTernerasHembrasIngRecria;
     }
+    let refugoTotalVacas = null;
+    if (cantVacasMuertasMes != null && cantVacasVendidasMes != null) {
+        refugoTotalVacas = cantVacasMuertasMes + cantVacasVendidasMes;
+    }
+    let porcentajeRefugoVacasMes = null;
+    if (refugoTotalVacas != null && vacasTotales > 0) {
+        porcentajeRefugoVacasMes = (refugoTotalVacas * 100) / vacasTotales;
+    }
+    let porcentajeRefugoVacasMensual = null;
+    if (refugoTotalVacas != null && vacasTotales > 0) {
+        porcentajeRefugoVacasMensual = (refugoTotalVacas * 100) / (vacasTotales / 12);
+    }
+    let porcentajeVacasMuertasMes = null;
+    if (cantVacasMuertasMes != null && vacasTotales > 0) {
+        porcentajeVacasMuertasMes = (cantVacasMuertasMes * 100) / vacasTotales;
+    }
+    let porcentajeVacasMuertasMensual = null;
+    if (cantVacasMuertasMes != null && vacasTotales > 0) {
+        porcentajeVacasMuertasMensual = (cantVacasMuertasMes * 100) / (vacasTotales / 12);
+    }
+    let porcentajeVacasVendidas = null;
+    if (cantVacasVendidasMes != null && vacasTotales > 0) {
+        porcentajeVacasVendidas = (cantVacasVendidasMes * 100) / (vacasTotales / 12);
+    }
     const result = await prisma.monthlyStatistic.update({
         where: { id },
         data: {
@@ -286,6 +394,9 @@ export async function updateMonthlyStatistic(id, data) {
             ternerasHembrasMuertasGuachera: data.ternerasHembrasMuertasGuachera !== undefined ? data.ternerasHembrasMuertasGuachera : existing.ternerasHembrasMuertasGuachera,
             cantTernerasHembrasIngRecria: data.cantTernerasHembrasIngRecria !== undefined ? data.cantTernerasHembrasIngRecria : existing.cantTernerasHembrasIngRecria,
             cantHembrasRecriaHastaServMuertas: data.cantHembrasRecriaHastaServMuertas !== undefined ? data.cantHembrasRecriaHastaServMuertas : existing.cantHembrasRecriaHastaServMuertas,
+            edadVaquillonasPrimerServicioMeses: data.edadVaquillonasPrimerServicioMeses !== undefined ? data.edadVaquillonasPrimerServicioMeses : existing.edadVaquillonasPrimerServicioMeses,
+            cantVacasMuertasMes: data.cantVacasMuertasMes !== undefined ? data.cantVacasMuertasMes : existing.cantVacasMuertasMes,
+            cantVacasVendidasMes: data.cantVacasVendidasMes !== undefined ? data.cantVacasVendidasMes : existing.cantVacasVendidasMes,
             partosTotales,
             vacasTotales,
             promedioLitrosVaca,
@@ -293,7 +404,13 @@ export async function updateMonthlyStatistic(id, data) {
             totalTernerosNacidosVivos,
             totalTernerosMuertos,
             porcentajeTernerosMuertosGuacheraMes,
-            porcentajeMortandadRecriaMes
+            porcentajeMortandadRecriaMes,
+            refugoTotalVacas,
+            porcentajeRefugoVacasMes,
+            porcentajeRefugoVacasMensual,
+            porcentajeVacasMuertasMes,
+            porcentajeVacasMuertasMensual,
+            porcentajeVacasVendidas
         }
     });
     await syncYearlyProjections(existing.tamboId, year);

@@ -144,6 +144,9 @@ model MonthlyStatistic {
   ternerasHembrasMuertasGuachera    Decimal? @db.Decimal(10, 2)
   cantTernerasHembrasIngRecria      Decimal? @db.Decimal(10, 2)
   cantHembrasRecriaHastaServMuertas Decimal? @db.Decimal(10, 2)
+  edadVaquillonasPrimerServicioMeses Decimal? @db.Decimal(10, 2)
+  cantVacasMuertasMes               Decimal? @db.Decimal(10, 2)
+  cantVacasVendidasMes              Decimal? @db.Decimal(10, 2)
   // Aquí se agregarían las ~25 variables restantes...
 
   // ==========================================
@@ -160,6 +163,17 @@ model MonthlyStatistic {
   proyeccionAnualNatimortos              Decimal? @db.Decimal(5, 2)
   proyeccionAnualTernerosMuertosGuachera Decimal? @db.Decimal(5, 2)
   proyeccionAnualMortandadRecria         Decimal? @db.Decimal(5, 2)
+  
+  refugoTotalVacas                       Decimal? @db.Decimal(10, 2)
+  porcentajeRefugoVacasMes               Decimal? @db.Decimal(5, 2)
+  porcentajeRefugoVacasMensual           Decimal? @db.Decimal(5, 2)
+  porcentajeVacasMuertasMes              Decimal? @db.Decimal(5, 2)
+  porcentajeVacasMuertasMensual          Decimal? @db.Decimal(5, 2)
+  porcentajeVacasVendidas                Decimal? @db.Decimal(5, 2)
+  
+  proyeccionAnualRefugoTotalVacas        Decimal? @db.Decimal(5, 2)
+  proyeccionAnualVacasMuertas            Decimal? @db.Decimal(5, 2)
+  proyeccionAnualVacasVendidas           Decimal? @db.Decimal(5, 2)
   // Aquí se agregarían los ~36 cálculos restantes...
 
   createdAt DateTime @default(now())

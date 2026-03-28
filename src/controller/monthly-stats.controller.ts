@@ -19,7 +19,10 @@ const monthlyStatSchema = z.object({
     ternerosMachosMuertosGuachera: z.coerce.number().min(0).optional(),
     ternerasHembrasMuertasGuachera: z.coerce.number().min(0).optional(),
     cantTernerasHembrasIngRecria: z.coerce.number().min(0).optional(),
-    cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional()
+    cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional(),
+    edadVaquillonasPrimerServicioMeses: z.coerce.number().min(0).optional(),
+    cantVacasMuertasMes: z.coerce.number().min(0).optional(),
+    cantVacasVendidasMes: z.coerce.number().min(0).optional()
 });
 
 export async function upsertMonthlyStatisticHandler(req: Request, res: Response) {
@@ -98,7 +101,10 @@ const monthlyStatUpdateSchema = z.object({
     ternerosMachosMuertosGuachera: z.coerce.number().min(0).optional(),
     ternerasHembrasMuertasGuachera: z.coerce.number().min(0).optional(),
     cantTernerasHembrasIngRecria: z.coerce.number().min(0).optional(),
-    cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional()
+    cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional(),
+    edadVaquillonasPrimerServicioMeses: z.coerce.number().min(0).optional(),
+    cantVacasMuertasMes: z.coerce.number().min(0).optional(),
+    cantVacasVendidasMes: z.coerce.number().min(0).optional()
 });
 
 export async function updateMonthlyStatisticHandler(req: Request, res: Response) {

@@ -50,6 +50,12 @@ const router = Router();
  *          type: number
  *        cantHembrasRecriaHastaServMuertas:
  *          type: number
+ *        edadVaquillonasPrimerServicioMeses:
+ *          type: number
+ *        cantVacasMuertasMes:
+ *          type: number
+ *        cantVacasVendidasMes:
+ *          type: number
  *    AnnualStatisticsResponse:
  *      type: object
  *      properties:
@@ -82,6 +88,8 @@ const router = Router();
  *              type: number
  *            cantHembrasRecriaHastaServMuertas:
  *              type: number
+ *            refugoTotalVacas:
+ *              type: number
  *        averages:
  *          type: object
  *          properties:
@@ -101,6 +109,12 @@ const router = Router();
  *            proyeccionAnualTernerosMuertosGuachera:
  *              type: number
  *            proyeccionAnualMortandadRecria:
+ *              type: number
+ *            proyeccionAnualRefugoTotalVacas:
+ *              type: number
+ *            proyeccionAnualVacasMuertas:
+ *              type: number
+ *            proyeccionAnualVacasVendidas:
  *              type: number
  */
 
@@ -246,6 +260,12 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *             cantTernerasHembrasIngRecria:
  *               type: number
  *             cantHembrasRecriaHastaServMuertas:
+ *               type: number
+ *             edadVaquillonasPrimerServicioMeses:
+ *               type: number
+ *             cantVacasMuertasMes:
+ *               type: number
+ *             cantVacasVendidasMes:
  *               type: number
  *     responses:
  *       200:
