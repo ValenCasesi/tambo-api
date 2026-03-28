@@ -134,18 +134,32 @@ model MonthlyStatistic {
   vacasOrdene       Decimal @db.Decimal(10, 2)
   vacasSecas        Decimal @db.Decimal(10, 2)
   litrosUsina       Decimal @db.Decimal(12, 2)
-  litrosDescarte    Decimal @db.Decimal(10, 2)
-  litrosGuachera    Decimal @db.Decimal(10, 2)
-  ternerosMuertos   Decimal @db.Decimal(10, 2)
+  litrosDescarte                    Decimal  @db.Decimal(10, 2)
+  litrosGuachera                    Decimal  @db.Decimal(10, 2)
+  ternerosMuertosPeriparto          Decimal? @db.Decimal(10, 2)
+  ternerosMachosNacidosVivos        Decimal? @db.Decimal(10, 2)
+  ternerasHembrasNacidasVivas       Decimal? @db.Decimal(10, 2)
+  cantNacimientosMellizos           Decimal? @db.Decimal(10, 2)
+  ternerosMachosMuertosGuachera     Decimal? @db.Decimal(10, 2)
+  ternerasHembrasMuertasGuachera    Decimal? @db.Decimal(10, 2)
+  cantTernerasHembrasIngRecria      Decimal? @db.Decimal(10, 2)
+  cantHembrasRecriaHastaServMuertas Decimal? @db.Decimal(10, 2)
   // Aquí se agregarían las ~25 variables restantes...
 
   // ==========================================
   // MÉTRICAS CALCULADAS (Cacheables en la BD)
   // ==========================================
-  partosTotales        Decimal @db.Decimal(10, 2) // partosVaquillonas + partosVacas
-  vacasTotales         Decimal @db.Decimal(10, 2) // vacasOrdene + vacasSecas
-  promedioLitrosVaca   Decimal @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
-  porcentajeNatimortos Decimal @db.Decimal(5, 2) // (ternerosMuertos * 100) / partosTotales
+  partosTotales                          Decimal  @db.Decimal(10, 2) // partosVaquillonas + partosVacas
+  vacasTotales                           Decimal  @db.Decimal(10, 2) // vacasOrdene + vacasSecas
+  promedioLitrosVaca                     Decimal  @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
+  porcentajeNatimortos                   Decimal? @db.Decimal(5, 2) // (ternerosMuertos * 100) / partosTotales
+  totalTernerosNacidosVivos              Decimal? @db.Decimal(10, 2)
+  totalTernerosMuertos                   Decimal? @db.Decimal(10, 2)
+  porcentajeTernerosMuertosGuacheraMes   Decimal? @db.Decimal(5, 2)
+  porcentajeMortandadRecriaMes           Decimal? @db.Decimal(5, 2)
+  proyeccionAnualNatimortos              Decimal? @db.Decimal(5, 2)
+  proyeccionAnualTernerosMuertosGuachera Decimal? @db.Decimal(5, 2)
+  proyeccionAnualMortandadRecria         Decimal? @db.Decimal(5, 2)
   // Aquí se agregarían los ~36 cálculos restantes...
 
   createdAt DateTime @default(now())

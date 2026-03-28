@@ -32,7 +32,21 @@ const router = Router();
  *          type: number
  *        litrosGuachera:
  *          type: number
- *        ternerosMuertos:
+ *        ternerosMuertosPeriparto:
+ *          type: number
+ *        ternerosMachosNacidosVivos:
+ *          type: number
+ *        ternerasHembrasNacidasVivas:
+ *          type: number
+ *        cantNacimientosMellizos:
+ *          type: number
+ *        ternerosMachosMuertosGuachera:
+ *          type: number
+ *        ternerasHembrasMuertasGuachera:
+ *          type: number
+ *        cantTernerasHembrasIngRecria:
+ *          type: number
+ *        cantHembrasRecriaHastaServMuertas:
  *          type: number
  *    AnnualStatisticsResponse:
  *      type: object
@@ -56,7 +70,15 @@ const router = Router();
  *              type: number
  *            litrosGuachera:
  *              type: number
- *            ternerosMuertos:
+ *            ternerosMuertosPeriparto:
+ *              type: number
+ *            totalTernerosNacidosVivos:
+ *              type: number
+ *            totalTernerosMuertos:
+ *              type: number
+ *            cantTernerasHembrasIngRecria:
+ *              type: number
+ *            cantHembrasRecriaHastaServMuertas:
  *              type: number
  *        averages:
  *          type: object
@@ -73,6 +95,10 @@ const router = Router();
  *            porcentajeNatimortos:
  *              type: number
  *            promedioLitrosVaca:
+ *              type: number
+ *            proyeccionAnualTernerosMuertosGuachera:
+ *              type: number
+ *            proyeccionAnualMortandadRecria:
  *              type: number
  */
 /**
@@ -198,7 +224,21 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *               type: number
  *             litrosGuachera:
  *               type: number
- *             ternerosMuertos:
+ *             ternerosMuertosPeriparto:
+ *               type: number
+ *             ternerosMachosNacidosVivos:
+ *               type: number
+ *             ternerasHembrasNacidasVivas:
+ *               type: number
+ *             cantNacimientosMellizos:
+ *               type: number
+ *             ternerosMachosMuertosGuachera:
+ *               type: number
+ *             ternerasHembrasMuertasGuachera:
+ *               type: number
+ *             cantTernerasHembrasIngRecria:
+ *               type: number
+ *             cantHembrasRecriaHastaServMuertas:
  *               type: number
  *     responses:
  *       200:
