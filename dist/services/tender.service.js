@@ -4,6 +4,25 @@ import { randomBytes } from "crypto";
 // ==========================================
 // HELPER: Auto-transition by dates (Option A)
 // ==========================================
+async function syncAllTendersStatuses() {
+    const now = new Date();
+    // 1. Move ACCEPTING_REQUESTS -> ACCEPTING_PROPOSALS
+    await prisma.tender.updateMany({
+        where: {
+            status: TenderStatus.ACCEPTING_REQUESTS,
+            requestDeadline: { lt: now }
+        },
+        data: { status: TenderStatus.ACCEPTING_PROPOSALS }
+    });
+    // 2. Move ACCEPTING_PROPOSALS -> CLOSED
+    await prisma.tender.updateMany({
+        where: {
+            status: TenderStatus.ACCEPTING_PROPOSALS,
+            proposalDeadline: { lt: now }
+        },
+        data: { status: TenderStatus.CLOSED, closedAt: now }
+    });
+}
 async function syncTenderStatus(tenderId) {
     const tender = await prisma.tender.findUnique({ where: { id: tenderId } });
     if (!tender)
@@ -32,6 +51,7 @@ export async function createTender(data) {
     return await prisma.tender.create({ data });
 }
 export async function getTenders(status) {
+    await syncAllTendersStatuses();
     const where = status ? { status } : {};
     return await prisma.tender.findMany({
         where,
