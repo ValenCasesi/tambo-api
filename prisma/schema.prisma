@@ -18,6 +18,7 @@ enum Role {
 }
 
 enum EntityStatus {
+  PENDING
   ACTIVE
   INACTIVE
   DELETED
@@ -79,6 +80,7 @@ model User {
   imageUrl  String?
   role      Role
   status    EntityStatus @default(ACTIVE)
+  termsAccepted Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -257,8 +259,6 @@ model Tender {
   title               String                          // Nombre descriptivo
   product             String                          // Ej: "Núcleo Mineral"
   specifications      String       @db.Text           // Especificaciones técnicas
-  totalVolume         Decimal      @db.Decimal(12, 2)
-  volumeUnit          String                          // Ej: "toneladas", "unidades"
   deliveryConditions  String       @db.Text
   paymentOptions      Json                            // Array de strings: ["contado","30 días"]
   status              TenderStatus @default(DRAFT)

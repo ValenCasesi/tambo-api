@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler } from "../controller/user.controller.js";
+import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler } from "../controller/user.controller.js";
 import { upload } from "../middlewares/upload.middleware.js";
 const router = Router();
 /**
@@ -42,6 +42,56 @@ const router = Router();
  *             $ref: '#/components/schemas/UserResponse'
  */
 router.get("/", getAllUsersHandler);
+/**
+ * @openapi
+ * /api/users/pending:
+ *  get:
+ *     tags:
+ *     - Users
+ *     summary: Obtener todos los usuarios pendientes de aprobación
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.get("/pending", getPendingUsersHandler);
+/**
+ * @openapi
+ * /api/users/{id}/approve:
+ *  put:
+ *     tags:
+ *     - Users
+ *     summary: Aprobar a un usuario pendiente (Admin)
+ *     parameters:
+ *      - name: id
+ *        in: path
+ *        required: true
+ *        schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: User activated successfully
+ *       400:
+ *         description: Not in PENDING status
+ */
+router.put("/:id/approve", approveUserHandler);
+/**
+ * @openapi
+ * /api/users/{id}/reject:
+ *  put:
+ *     tags:
+ *     - Users
+ *     summary: Rechazar a un usuario pendiente (Admin)
+ *     parameters:
+ *      - name: id
+ *        in: path
+ *        required: true
+ *        schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: User rejected successfully
+ *       400:
+ *         description: Not in PENDING status
+ */
+router.put("/:id/reject", rejectUserHandler);
 /**
  * @openapi
  * /api/users:

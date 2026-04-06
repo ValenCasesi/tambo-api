@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { createUser, updateUser, getAllUsers, deleteUser } from "../services/user.service.js";
+import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 
 const createUserSchema = z.object({
@@ -89,6 +89,44 @@ export async function getAllUsersHandler(req: Request, res: Response) {
         return res.status(200).json(users);
     } catch (err: any) {
         console.error("getAllUsersHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function getPendingUsersHandler(req: Request, res: Response) {
+    try {
+        const users = await getPendingUsers();
+        return res.status(200).json(users);
+    } catch (err: any) {
+        console.error("getPendingUsersHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function approveUserHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const result = await approveUser(id);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("approveUserHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function rejectUserHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const result = await rejectUser(id);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("rejectUserHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

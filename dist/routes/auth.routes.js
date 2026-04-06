@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginHandler, logoutHandler } from "../controller/auth.controller.js";
+import { loginHandler, logoutHandler, acceptTermsHandler } from "../controller/auth.controller.js";
 const router = Router();
 /**
  * @openapi
@@ -85,4 +85,25 @@ router.post("/login", loginHandler);
  *         description: Error de servidor
  */
 router.post("/logout", logoutHandler);
+/**
+ * @openapi
+ * /api/auth/accept-terms:
+ *  put:
+ *     tags:
+ *     - Auth
+ *     summary: Aceptar Términos y Condiciones
+ *     requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              userId:
+ *                type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put("/accept-terms", acceptTermsHandler);
 export default router;

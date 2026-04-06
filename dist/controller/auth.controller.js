@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { login, logout } from "../services/auth.service.js";
+import { login, logout, acceptTerms } from "../services/auth.service.js";
 const loginSchema = z.object({
     email: z.string().email("Debe ser un correo electrónico válido"),
     password: z.string().min(1, "La contraseña es obligatoria")
@@ -31,6 +31,22 @@ export async function logoutHandler(req, res) {
     }
     catch (err) {
         console.error("logoutHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function acceptTermsHandler(req, res) {
+    try {
+        const userId = req.body.userId; // in a real app, from req.user
+        if (!userId)
+            return res.status(400).json({ error: "Missing userId" });
+        const result = await acceptTerms(userId);
+        return res.status(200).json(result);
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("acceptTermsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

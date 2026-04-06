@@ -18,6 +18,9 @@ export async function login(email, plainPassword) {
     if (user.status === "DELETED") {
         throw { status: 403, message: "El usuario está deshabilitado" };
     }
+    if (user.status === "PENDING") {
+        throw { status: 403, message: "Usuario en revision" };
+    }
     // 2. Verificar contraseña
     const isValid = await comparePassword(plainPassword, user.password);
     if (!isValid) {
@@ -43,4 +46,14 @@ export async function logout(token) {
     // we would add it to a blacklist (e.g., in Redis or a DB table 'RevokedToken').
     // For now, this is a placeholder that simply returns success.
     return { success: true, message: "Sesión cerrada correctamente" };
+}
+export async function acceptTerms(userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user)
+        throw { status: 404, message: "Usuario no encontrado" };
+    return await prisma.user.update({
+        where: { id: userId },
+        data: { termsAccepted: true },
+        select: { id: true, termsAccepted: true }
+    });
 }

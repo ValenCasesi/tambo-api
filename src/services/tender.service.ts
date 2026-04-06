@@ -65,8 +65,6 @@ export type TenderInput = {
     title: string;
     product: string;
     specifications: string;
-    totalVolume: number;
-    volumeUnit: string;
     deliveryConditions: string;
     paymentOptions: string[];
     requestStartDate: Date;

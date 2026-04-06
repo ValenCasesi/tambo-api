@@ -14,7 +14,7 @@ const router = Router();
  *  schemas:
  *    TenderInput:
  *      type: object
- *      required: [title, product, specifications, totalVolume, volumeUnit, deliveryConditions, paymentOptions, requestStartDate, requestDeadline, proposalStartDate, proposalDeadline]
+ *      required: [title, product, specifications, deliveryConditions, paymentOptions, requestStartDate, requestDeadline, proposalStartDate, proposalDeadline]
  *      properties:
  *        title:
  *          type: string
@@ -25,12 +25,6 @@ const router = Router();
  *        specifications:
  *          type: string
  *          example: "Proteína mínima 30%, humedad máxima 12%"
- *        totalVolume:
- *          type: number
- *          example: 500
- *        volumeUnit:
- *          type: string
- *          example: "toneladas"
  *        deliveryConditions:
  *          type: string
  *          example: "Entrega en tambo, sin costo de flete"
