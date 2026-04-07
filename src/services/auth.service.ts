@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import prisma from "../prisma/client.js";
+import { sendMail } from "./email.service.js";
 
 const SALT_ROUNDS = 10;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
@@ -23,7 +24,7 @@ export async function login(email: string, plainPassword: string) {
     if (user.status === "DELETED") {
         throw { status: 403, message: "El usuario está deshabilitado" };
     }
-    
+
     if (user.status === "PENDING") {
         throw { status: 403, message: "Usuario en revision" };
     }
@@ -66,10 +67,75 @@ export async function logout(token?: string) {
 export async function acceptTerms(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw { status: 404, message: "Usuario no encontrado" };
-    
+
     return await prisma.user.update({
         where: { id: userId },
         data: { termsAccepted: true },
         select: { id: true, termsAccepted: true }
     });
+}
+
+export async function changePassword(email: string, oldPass: string, newPass: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) throw { status: 404, message: "Usuario no encontrado" };
+
+    const isValid = await comparePassword(oldPass, user.password);
+    if (!isValid) throw { status: 401, message: "La contraseña actual es incorrecta" };
+
+    const newHashed = await hashPassword(newPass);
+    await prisma.user.update({
+        where: { email },
+        data: { password: newHashed }
+    });
+
+    return { success: true, message: "Contraseña actualizada correctamente" };
+}
+
+export async function forgotPassword(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || user.status === "DELETED") {
+        return { success: true, message: "Si esta dirección de correo electrónico está registrada, recibirás instrucciones brevemente." };
+    }
+
+    // Stateless JWT trick: The secret is combining our generic secret + their current password hash.
+    const secret = JWT_SECRET + user.password;
+    const token = jwt.sign({ email: user.email, id: user.id }, secret, { expiresIn: '15m' });
+
+    // Usamos variables de entorno para apuntar al Frontend real en Producción (ej: Vercel)
+    // Opcionalmente en local cae de maduro al enlace de prueba.
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000/api/auth/reset-password-testlink";
+    const resetUrl = `${baseUrl}?token=${token}&userId=${user.id}`;
+
+    sendMail(
+        user.email,
+        "Recuperación de Contraseña - TAMO",
+        `Hola ${user.firstName},\n\nHemos recibido una solicitud para restablecer tu contraseña.\nPodés hacerlo ingresando al siguiente enlace (válido por 15 minutos):\n\n${resetUrl}\n\nSi no fuiste vos, ignorá este mensaje.\n\nSaludos,\nEl equipo de TAMO.`
+    ).catch(err => console.error("Error sending forgot password email:", err));
+
+    return { success: true, message: "Si esta dirección de correo electrónico está registrada, recibirás instrucciones brevemente." };
+}
+
+export async function resetPassword(userId: string, token: string, newPass: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status === "DELETED") {
+        throw { status: 400, message: "Enlace inválido o expirado" };
+    }
+
+    const secret = JWT_SECRET + user.password;
+
+    try {
+        jwt.verify(token, secret);
+    } catch (e) {
+        // If password was already changed, the secret changed, failing verify.
+        // Or if 15 mins passed, it also fails.
+        throw { status: 400, message: "Enlace inválido, utilizado o expirado" };
+    }
+
+    const newHashed = await hashPassword(newPass);
+    await prisma.user.update({
+        where: { id: userId },
+        data: { password: newHashed }
+    });
+
+    return { success: true, message: "Tu contraseña ha sido restablecida correctamente. Ya podés iniciar sesión." };
 }

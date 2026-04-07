@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginHandler, logoutHandler, acceptTermsHandler } from "../controller/auth.controller.js";
+import { loginHandler, logoutHandler, acceptTermsHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "../controller/auth.controller.js";
 
 const router = Router();
 
@@ -111,5 +111,81 @@ router.post("/logout", logoutHandler);
  *         description: Success
  */
 router.put("/accept-terms", acceptTermsHandler);
+
+/**
+ * @openapi
+ * /api/auth/change-password:
+ *  put:
+ *     tags:
+ *     - Auth
+ *     summary: Cambiar contraseña (Requiere usuario dentro de app)
+ *     requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              email:
+ *                type: string
+ *              oldPassword:
+ *                type: string
+ *              newPassword:
+ *                type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put("/change-password", changePasswordHandler);
+
+/**
+ * @openapi
+ * /api/auth/forgot-password:
+ *  post:
+ *     tags:
+ *     - Auth
+ *     summary: Solicitar link de recuperación de contraseña
+ *     requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              email:
+ *                type: string
+ *     responses:
+ *       200:
+ *         description: Success (Anti-doxing enabled)
+ */
+router.post("/forgot-password", forgotPasswordHandler);
+
+/**
+ * @openapi
+ * /api/auth/reset-password:
+ *  post:
+ *     tags:
+ *     - Auth
+ *     summary: Ejecutar el reseteo con el token enviado al email
+ *     requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              userId:
+ *                type: string
+ *              token:
+ *                type: string
+ *              newPassword:
+ *                type: string
+ *     responses:
+ *       200:
+ *         description: Reseteo Exitoso
+ *       400:
+ *         description: Token inválido o expirado
+ */
+router.post("/reset-password", resetPasswordHandler);
 
 export default router;
