@@ -42,9 +42,9 @@ const router = Router();
  *          type: number
  *        cantNacimientosMellizos:
  *          type: number
- *        ternerosMachosMuertosGuachera:
+ *        ternerosMuertosGuachera:
  *          type: number
- *        ternerasHembrasMuertasGuachera:
+ *        ternerosIngresadosGuachera:
  *          type: number
  *        cantTernerasHembrasIngRecria:
  *          type: number
@@ -55,6 +55,36 @@ const router = Router();
  *        cantVacasMuertasMes:
  *          type: number
  *        cantVacasVendidasMes:
+ *          type: number
+ *        CantVaquillonasPrenadas:
+ *          type: number
+ *        CantVacasPrenadas:
+ *          type: number
+ *        CantVacasAbortadas:
+ *          type: number
+ *        cantVaquillonasAbortadas:
+ *          type: number
+ *        diasIPPS:
+ *          type: number
+ *        porcentajeIPPS:
+ *          type: number
+ *        cantVacasMetritis:
+ *          type: number
+ *        CantVacasRetencionPlacenta:
+ *          type: number
+ *        cantVacasCaidas:
+ *          type: number
+ *        diasDeLeche:
+ *          type: number
+ *        conteoCelulasSomaticas:
+ *          type: number
+ *        conteoBacteriasTotales:
+ *          type: number
+ *        casosClinicosMastitis:
+ *          type: number
+ *        conteoCultivoPlacasPositivo:
+ *          type: number
+ *        conteoCultivoPlacasContaminados:
  *          type: number
  *    AnnualStatisticsResponse:
  *      type: object
@@ -90,6 +120,18 @@ const router = Router();
  *              type: number
  *            refugoTotalVacas:
  *              type: number
+ *            CantVacasAbortadas:
+ *              type: number
+ *            CantVacasPrenadas:
+ *              type: number
+ *            cantVaquillonasAbortadas:
+ *              type: number
+ *            CantVaquillonasPrenadas:
+ *              type: number
+ *            crecimientoAnual:
+ *              type: number
+ *            crecimientoFuturo:
+ *              type: number
  *        averages:
  *          type: object
  *          properties:
@@ -115,6 +157,14 @@ const router = Router();
  *            proyeccionAnualVacasMuertas:
  *              type: number
  *            proyeccionAnualVacasVendidas:
+ *              type: number
+ *            acumAnualAbortosVacas:
+ *              type: number
+ *            acumAnualAbortosVaquillonas:
+ *              type: number
+ *            acumAnualCrecimientoActual:
+ *              type: number
+ *            acumAnualCrecimientoFuturo:
  *              type: number
  */
 
@@ -253,9 +303,9 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *               type: number
  *             cantNacimientosMellizos:
  *               type: number
- *             ternerosMachosMuertosGuachera:
+ *             ternerosMuertosGuachera:
  *               type: number
- *             ternerasHembrasMuertasGuachera:
+ *             ternerosIngresadosGuachera:
  *               type: number
  *             cantTernerasHembrasIngRecria:
  *               type: number
@@ -266,6 +316,36 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *             cantVacasMuertasMes:
  *               type: number
  *             cantVacasVendidasMes:
+ *               type: number
+ *             CantVaquillonasPrenadas:
+ *               type: number
+ *             CantVacasPrenadas:
+ *               type: number
+ *             CantVacasAbortadas:
+ *               type: number
+ *             cantVaquillonasAbortadas:
+ *               type: number
+ *             diasIPPS:
+ *               type: number
+ *             porcentajeIPPS:
+ *               type: number
+ *             cantVacasMetritis:
+ *               type: number
+ *             CantVacasRetencionPlacenta:
+ *               type: number
+ *             cantVacasCaidas:
+ *               type: number
+ *             diasDeLeche:
+ *               type: number
+ *             conteoCelulasSomaticas:
+ *               type: number
+ *             conteoBacteriasTotales:
+ *               type: number
+ *             casosClinicosMastitis:
+ *               type: number
+ *             conteoCultivoPlacasPositivo:
+ *               type: number
+ *             conteoCultivoPlacasContaminados:
  *               type: number
  *     responses:
  *       200:

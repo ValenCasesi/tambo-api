@@ -80,9 +80,10 @@ export async function forgotPassword(email) {
     // Stateless JWT trick: The secret is combining our generic secret + their current password hash.
     const secret = JWT_SECRET + user.password;
     const token = jwt.sign({ email: user.email, id: user.id }, secret, { expiresIn: '15m' });
-    // In a real frontend setup, URL would be your SPA address. 
-    // Example: const resetUrl = `https://tamo.com/reset-password?token=${token}&id=${user.id}`;
-    const resetUrl = `http://localhost:3000/api/auth/reset-password-testlink?token=${token}&userId=${user.id}`;
+    // Usamos variables de entorno para apuntar al Frontend real en Producción (ej: Vercel)
+    // Opcionalmente en local cae de maduro al enlace de prueba.
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000/api/auth/reset-password-testlink";
+    const resetUrl = `${baseUrl}?token=${token}&userId=${user.id}`;
     sendMail(user.email, "Recuperación de Contraseña - TAMO", `Hola ${user.firstName},\n\nHemos recibido una solicitud para restablecer tu contraseña.\nPodés hacerlo ingresando al siguiente enlace (válido por 15 minutos):\n\n${resetUrl}\n\nSi no fuiste vos, ignorá este mensaje.\n\nSaludos,\nEl equipo de TAMO.`).catch(err => console.error("Error sending forgot password email:", err));
     return { success: true, message: "Si esta dirección de correo electrónico está registrada, recibirás instrucciones brevemente." };
 }

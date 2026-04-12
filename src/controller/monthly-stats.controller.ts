@@ -16,13 +16,28 @@ const monthlyStatSchema = z.object({
     ternerosMachosNacidosVivos: z.coerce.number().min(0).optional(),
     ternerasHembrasNacidasVivas: z.coerce.number().min(0).optional(),
     cantNacimientosMellizos: z.coerce.number().min(0).optional(),
-    ternerosMachosMuertosGuachera: z.coerce.number().min(0).optional(),
-    ternerasHembrasMuertasGuachera: z.coerce.number().min(0).optional(),
+    ternerosMuertosGuachera: z.coerce.number().min(0).optional(),
+    ternerosIngresadosGuachera: z.coerce.number().min(0).optional(),
     cantTernerasHembrasIngRecria: z.coerce.number().min(0).optional(),
     cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional(),
     edadVaquillonasPrimerServicioMeses: z.coerce.number().min(0).optional(),
     cantVacasMuertasMes: z.coerce.number().min(0).optional(),
-    cantVacasVendidasMes: z.coerce.number().min(0).optional()
+    cantVacasVendidasMes: z.coerce.number().min(0).optional(),
+    CantVaquillonasPrenadas: z.coerce.number().min(0).optional(),
+    CantVacasPrenadas: z.coerce.number().min(0).optional(),
+    CantVacasAbortadas: z.coerce.number().min(0).optional(),
+    cantVaquillonasAbortadas: z.coerce.number().min(0).optional(),
+    diasIPPS: z.coerce.number().min(0).optional(),
+    porcentajeIPPS: z.coerce.number().min(0).optional(),
+    cantVacasMetritis: z.coerce.number().min(0).optional(),
+    CantVacasRetencionPlacenta: z.coerce.number().min(0).optional(),
+    cantVacasCaidas: z.coerce.number().min(0).optional(),
+    diasDeLeche: z.coerce.number().min(0).optional(),
+    conteoCelulasSomaticas: z.coerce.number().min(0).optional(),
+    conteoBacteriasTotales: z.coerce.number().min(0).optional(),
+    casosClinicosMastitis: z.coerce.number().min(0).optional(),
+    conteoCultivoPlacasPositivo: z.coerce.number().min(0).optional(),
+    conteoCultivoPlacasContaminados: z.coerce.number().min(0).optional()
 });
 
 export async function upsertMonthlyStatisticHandler(req: Request, res: Response) {
@@ -98,13 +113,28 @@ const monthlyStatUpdateSchema = z.object({
     ternerosMachosNacidosVivos: z.coerce.number().min(0).optional(),
     ternerasHembrasNacidasVivas: z.coerce.number().min(0).optional(),
     cantNacimientosMellizos: z.coerce.number().min(0).optional(),
-    ternerosMachosMuertosGuachera: z.coerce.number().min(0).optional(),
-    ternerasHembrasMuertasGuachera: z.coerce.number().min(0).optional(),
+    ternerosMuertosGuachera: z.coerce.number().min(0).optional(),
+    ternerosIngresadosGuachera: z.coerce.number().min(0).optional(),
     cantTernerasHembrasIngRecria: z.coerce.number().min(0).optional(),
     cantHembrasRecriaHastaServMuertas: z.coerce.number().min(0).optional(),
     edadVaquillonasPrimerServicioMeses: z.coerce.number().min(0).optional(),
     cantVacasMuertasMes: z.coerce.number().min(0).optional(),
-    cantVacasVendidasMes: z.coerce.number().min(0).optional()
+    cantVacasVendidasMes: z.coerce.number().min(0).optional(),
+    CantVaquillonasPrenadas: z.coerce.number().min(0).optional(),
+    CantVacasPrenadas: z.coerce.number().min(0).optional(),
+    CantVacasAbortadas: z.coerce.number().min(0).optional(),
+    cantVaquillonasAbortadas: z.coerce.number().min(0).optional(),
+    diasIPPS: z.coerce.number().min(0).optional(),
+    porcentajeIPPS: z.coerce.number().min(0).optional(),
+    cantVacasMetritis: z.coerce.number().min(0).optional(),
+    CantVacasRetencionPlacenta: z.coerce.number().min(0).optional(),
+    cantVacasCaidas: z.coerce.number().min(0).optional(),
+    diasDeLeche: z.coerce.number().min(0).optional(),
+    conteoCelulasSomaticas: z.coerce.number().min(0).optional(),
+    conteoBacteriasTotales: z.coerce.number().min(0).optional(),
+    casosClinicosMastitis: z.coerce.number().min(0).optional(),
+    conteoCultivoPlacasPositivo: z.coerce.number().min(0).optional(),
+    conteoCultivoPlacasContaminados: z.coerce.number().min(0).optional()
 });
 
 export async function updateMonthlyStatisticHandler(req: Request, res: Response) {
