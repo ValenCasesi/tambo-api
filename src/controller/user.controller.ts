@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser } from "../services/user.service.js";
+import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 
 const createUserSchema = z.object({
@@ -10,7 +10,9 @@ const createUserSchema = z.object({
     password: z.string().min(6),
     role: z.enum(["PRODUCTOR", "EMPRESA", "ADMIN"]).optional(),
     phone: z.string().optional(),
-    cuit: z.string().optional(),
+    cuit: z.string().min(1, "El CUIT es obligatorio"),
+    razonSocial: z.string().min(1, "La Razón Social es obligatoria"),
+    localidad: z.string().min(1, "La Localidad es obligatoria"),
     imageUrl: z.string().url().optional(),
 });
 
@@ -50,6 +52,8 @@ const updateUserSchema = z.object({
     role: z.enum(["PRODUCTOR", "EMPRESA", "ADMIN"]).optional(),
     phone: z.string().optional().nullable(),
     cuit: z.string().optional().nullable(),
+    razonSocial: z.string().optional().nullable(),
+    localidad: z.string().optional().nullable(),
     imageUrl: z.string().url().optional().nullable(),
 });
 
@@ -141,6 +145,20 @@ export async function deleteUserHandler(req: Request, res: Response) {
             return res.status(err.status).json({ error: err.message });
         }
         console.error("deleteUserHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function reactivateUserHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const result = await reactivateUser(id);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("reactivateUserHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

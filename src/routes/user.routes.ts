@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler } from "../controller/user.controller.js";
+import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler, reactivateUserHandler } from "../controller/user.controller.js";
 import { upload } from "../middlewares/upload.middleware.js";
 
 const router = Router();
@@ -22,6 +22,15 @@ const router = Router();
  *          type: string
  *        role:
  *          type: string
+ *        cuit:
+ *          type: string
+ *          nullable: true
+ *        razonSocial:
+ *          type: string
+ *          nullable: true
+ *        localidad:
+ *          type: string
+ *          nullable: true
  *        imageUrl:
  *          type: string
  *          nullable: true
@@ -121,6 +130,14 @@ router.put("/:id/reject", rejectUserHandler);
  *              type: string
  *            password:
  *              type: string
+ *            role:
+ *              type: string
+ *            cuit:
+ *              type: string
+ *            razonSocial:
+ *              type: string
+ *            localidad:
+ *              type: string
  *            image:
  *              type: string
  *              format: binary
@@ -159,6 +176,14 @@ router.post("/", upload.single("image"), createUserHandler);
  *              type: string
  *            lastName:
  *              type: string
+ *            role:
+ *              type: string
+ *            cuit:
+ *              type: string
+ *            razonSocial:
+ *              type: string
+ *            localidad:
+ *              type: string
  *            image:
  *              type: string
  *              format: binary
@@ -176,7 +201,7 @@ router.put("/:id", upload.single("image"), updateUserHandler);
  *  delete:
  *     tags:
  *     - Users
- *     summary: Soft delete a user
+ *     summary: Soft delete (suspend) a user
  *     parameters:
  *      - name: id
  *        in: path
@@ -193,5 +218,29 @@ router.put("/:id", upload.single("image"), updateUserHandler);
  *         description: User not found
  */
 router.delete("/:id", deleteUserHandler);
+
+/**
+ * @openapi
+ * /api/users/{id}/reactivate:
+ *  put:
+ *     tags:
+ *     - Users
+ *     summary: Reactivar un usuario suspendido/eliminado
+ *     parameters:
+ *      - name: id
+ *        in: path
+ *        description: The user ID
+ *        required: true
+ *        schema:
+ *          type: string
+ *     responses:
+ *       200:
+ *         description: User reactivated successfully
+ *       400:
+ *         description: User is already active
+ *       404:
+ *         description: User not found
+ */
+router.put("/:id/reactivate", reactivateUserHandler);
 
 export default router;

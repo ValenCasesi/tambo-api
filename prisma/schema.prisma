@@ -76,6 +76,8 @@ model User {
   email         String       @unique
   phone         String? // WhatsApp
   cuit          String?      @unique
+  razonSocial   String?
+  localidad     String?
   password      String
   imageUrl      String?
   role          Role

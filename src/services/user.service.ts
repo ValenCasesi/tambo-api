@@ -11,11 +11,13 @@ type CreateUserInput = {
     role?: Role | string;
     phone?: string | null;
     cuit?: string | null;
+    razonSocial?: string | null;
+    localidad?: string | null;
     imageUrl?: string | null;
 };
 
 export async function createUser(input: CreateUserInput) {
-    const { email, cuit, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl } = input;
+    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl } = input;
 
     // check email uniqueness
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -41,6 +43,8 @@ export async function createUser(input: CreateUserInput) {
             role: role as Role,
             phone,
             cuit,
+            razonSocial,
+            localidad,
             imageUrl,
             status: isPending ? "PENDING" : "ACTIVE"
         },
@@ -57,9 +61,12 @@ export async function createUser(input: CreateUserInput) {
                 messageLines: [
                     "Hola Admin,",
                     "Un nuevo usuario acaba de registrarse y espera tu aprobación para ingresar.",
-                    `<b>Nombre:</b> ${firstName} ${lastName}`,
+                    `<b>Nombre y Apellido:</b> ${firstName} ${lastName}`,
+                    `<b>Razón Social:</b> ${razonSocial || "No especificada"}`,
+                    `<b>Localidad:</b> ${localidad || "No especificada"}`,
                     `<b>Rol:</b> ${role}`,
                     `<b>Email:</b> ${email}`,
+                    `<b>CUIT:</b> ${cuit}`,
                     "Ingresa al panel administrativo para revisar la solicitud y aprobarla."
                 ],
                 buttonText: "Ir al Panel de Administración",
@@ -83,11 +90,13 @@ type UpdateUserInput = {
     role?: Role | string;
     phone?: string | null;
     cuit?: string | null;
+    razonSocial?: string | null;
+    localidad?: string | null;
     imageUrl?: string | null;
 };
 
 export async function updateUser(input: UpdateUserInput) {
-    const { id, email, cuit, password, role, firstName, lastName, phone, imageUrl } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl } = input;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
@@ -115,6 +124,8 @@ export async function updateUser(input: UpdateUserInput) {
             ...(email && { email }),
             ...(phone !== undefined && { phone }),
             ...(cuit !== undefined && { cuit }),
+            ...(razonSocial !== undefined && { razonSocial }),
+            ...(localidad !== undefined && { localidad }),
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
@@ -131,7 +142,7 @@ export async function getAllUsers() {
     const users = await prisma.user.findMany({
         where: {
             status: {
-                not: "DELETED"
+                not: "PENDING" // Excluye PENDING porque tienen su propia vista, incluye ACTIVE, DELETED e INACTIVE
             }
         }
     });
@@ -233,6 +244,37 @@ export async function deleteUser(id: string) {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _pwd, ...safe } = deleted;
+    return safe;
+}
+
+export async function reactivateUser(id: string) {
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) throw { status: 404, message: "User not found" };
+    if (existing.status === "ACTIVE") throw { status: 400, message: "User is already active" };
+
+    const reactivated = await prisma.user.update({
+        where: { id },
+        data: { status: "ACTIVE" }
+    });
+
+    sendMail(
+        reactivated.email,
+        "¡Tu cuenta ha sido reactivada! - Sinergia Plataforma",
+        `Hola ${reactivated.firstName},\n\nTe informamos que el administrador ha rehabilitado el acceso a tu cuenta.\n\nYa podés ingresar nuevamente a la plataforma con tus credenciales habituales.\n\nSaludos,\nEl equipo de Sinergia.`,
+        buildHtmlTemplate({
+            title: "¡Tu cuenta ha sido reactivada!",
+            messageLines: [
+                `Hola ${reactivated.firstName},`,
+                "Te informamos que el administrador ha rehabilitado el acceso a tu cuenta. Se han restaurado todos tus permisos.",
+                "Ya puedes ingresar nuevamente a la plataforma utilizando tus credenciales habituales."
+            ],
+            buttonText: "Iniciar Sesión",
+            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+        })
+    ).catch(err => console.error("Error firing reactivated user email:", err));
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _pwd, ...safe } = reactivated;
     return safe;
 }
 
