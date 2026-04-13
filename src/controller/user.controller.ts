@@ -89,7 +89,8 @@ export async function updateUserHandler(req: Request, res: Response) {
 
 export async function getAllUsersHandler(req: Request, res: Response) {
     try {
-        const users = await getAllUsers();
+        const status = req.query.status as string;
+        const users = await getAllUsers(status);
         return res.status(200).json(users);
     } catch (err: any) {
         console.error("getAllUsersHandler:", err);

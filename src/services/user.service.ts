@@ -138,13 +138,17 @@ export async function updateUser(input: UpdateUserInput) {
     return safe;
 }
 
-export async function getAllUsers() {
+export async function getAllUsers(statusFilter?: string) {
+    const whereClause: any = {};
+    
+    if (statusFilter) {
+        whereClause.status = statusFilter;
+    } else {
+        whereClause.status = { not: "PENDING" }; // Default
+    }
+
     const users = await prisma.user.findMany({
-        where: {
-            status: {
-                not: "PENDING" // Excluye PENDING porque tienen su propia vista, incluye ACTIVE, DELETED e INACTIVE
-            }
-        }
+        where: whereClause
     });
 
     return users.map((u) => {

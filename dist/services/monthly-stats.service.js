@@ -156,6 +156,10 @@ export async function upsertMonthlyStatistic(input) {
     const promedioLitrosVaca = vVacasOrdene > 0
         ? (vLitrosUsina + vLitrosDescarte + vLitrosGuachera) / diasMes / vVacasOrdene
         : 0;
+    let porcentajePartoVaquillonas = null;
+    if (vacasTotales > 0) {
+        porcentajePartoVaquillonas = (vPartosVaquillonas * 100) / vacasTotales;
+    }
     // Optional Fields Calculations
     let totalTernerosNacidosVivos = null;
     if (vTernerosMachosNacidosVivos != null && vTernerasHembrasNacidasVivas != null) {
@@ -259,7 +263,7 @@ export async function upsertMonthlyStatistic(input) {
         cantNacimientosMellizos: vCantNacimientosMellizos, ternerosMuertosGuachera: vTernerosMuertosGuachera, ternerosIngresadosGuachera: vTernerosIngresadosGuachera,
         cantTernerasHembrasIngRecria: vCantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas: vCantHembrasRecriaHastaServMuertas,
         edadVaquillonasPrimerServicioMeses: vEdadVaquillonasPrimerServicioMeses, cantVacasMuertasMes: vCantVacasMuertasMes, cantVacasVendidasMes: vCantVacasVendidasMes,
-        partosTotales, vacasTotales, promedioLitrosVaca,
+        partosTotales, vacasTotales, promedioLitrosVaca, porcentajePartoVaquillonas,
         porcentajeNatimortos, totalTernerosNacidosVivos,
         porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes,
         refugoTotalVacas, porcentajeRefugoVacasMes, porcentajeRefugoVacasMensual,
@@ -499,6 +503,10 @@ export async function updateMonthlyStatistic(id, data) {
     const promedioLitrosVaca = vacasOrdene > 0
         ? (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
         : 0;
+    let porcentajePartoVaquillonas = null;
+    if (vacasTotales > 0) {
+        porcentajePartoVaquillonas = (partosVaquillonas * 100) / vacasTotales;
+    }
     let totalTernerosNacidosVivos = null;
     if (ternerosMachosNacidosVivos != null && ternerasHembrasNacidasVivas != null) {
         totalTernerosNacidosVivos = ternerosMachosNacidosVivos + ternerasHembrasNacidasVivas;
@@ -612,6 +620,7 @@ export async function updateMonthlyStatistic(id, data) {
             partosTotales,
             vacasTotales,
             promedioLitrosVaca,
+            porcentajePartoVaquillonas,
             porcentajeNatimortos,
             totalTernerosNacidosVivos,
             porcentajeTernerosMuertosGuacheraMes,

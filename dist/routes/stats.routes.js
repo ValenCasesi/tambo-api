@@ -84,6 +84,93 @@ const router = Router();
  *          type: number
  *        conteoCultivoPlacasContaminados:
  *          type: number
+ *    MonthlyStatisticResponse:
+ *      allOf:
+ *        - $ref: '#/components/schemas/MonthlyStatisticInput'
+ *        - type: object
+ *          properties:
+ *            id:
+ *              type: string
+ *            month:
+ *              type: number
+ *            year:
+ *              type: number
+ *            partosTotales:
+ *              type: number
+ *            vacasTotales:
+ *              type: number
+ *            promedioLitrosVaca:
+ *              type: number
+ *            porcentajePartoVaquillonas:
+ *              type: number
+ *            porcentajeNatimortos:
+ *              type: number
+ *            totalTernerosNacidosVivos:
+ *              type: number
+ *            porcentajeTernerosMuertosGuacheraMes:
+ *              type: number
+ *            porcentajeMortandadRecriaMes:
+ *              type: number
+ *            proyeccionAnualNatimortos:
+ *              type: number
+ *            proyeccionAnualTernerosMuertosGuachera:
+ *              type: number
+ *            proyeccionAnualMortandadRecria:
+ *              type: number
+ *            refugoTotalVacas:
+ *              type: number
+ *            porcentajeRefugoVacasMes:
+ *              type: number
+ *            porcentajeRefugoVacasMensual:
+ *              type: number
+ *            porcentajeVacasMuertasMes:
+ *              type: number
+ *            porcentajeVacasMuertasMensual:
+ *              type: number
+ *            porcentajeVacasVendidas:
+ *              type: number
+ *            proyeccionAnualRefugoTotalVacas:
+ *              type: number
+ *            proyeccionAnualVacasMuertas:
+ *              type: number
+ *            proyeccionAnualVacasVendidas:
+ *              type: number
+ *            porcentajeVacasPrenadas:
+ *              type: number
+ *            animalesPrenados:
+ *              type: number
+ *            porcentajeAbortoVacasMes:
+ *              type: number
+ *            acumAnualAbortosVacas:
+ *              type: number
+ *            porcentajeVaquillonasAbortadasMes:
+ *              type: number
+ *            acumAnualAbortosVaquillonas:
+ *              type: number
+ *            porcentajeMetritisVacas:
+ *              type: number
+ *            porcentajeRetencionPlacentaVacas:
+ *              type: number
+ *            porcentajeVacasCaida:
+ *              type: number
+ *            crecimientoAnual:
+ *              type: number
+ *            acumAnualCrecimientoActual:
+ *              type: number
+ *            crecimientoFuturo:
+ *              type: number
+ *            acumAnualCrecimientoFuturo:
+ *              type: number
+ *            porcentajeCasosClinicosMastitis:
+ *              type: number
+ *            conteoCultivoPlacasNegativas:
+ *              type: number
+ *            porcentajeConteoPlacasPositivo:
+ *              type: number
+ *            porcentajeConteoPlacasNegativo:
+ *              type: number
+ *            porcentajeConteoPlacasContaminado:
+ *              type: number
  *    AnnualStatisticsResponse:
  *      type: object
  *      properties:
@@ -181,6 +268,10 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MonthlyStatisticResponse'
  *       400:
  *         description: Validation error
  *       404:
@@ -226,6 +317,12 @@ router.get("/:tamboId/annual/:year", getAnnualStatisticsHandler);
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/MonthlyStatisticResponse'
  *       500:
  *         description: Internal server error
  */
@@ -247,6 +344,12 @@ router.get("/monthly", getAllMonthlyStatisticsHandler);
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/MonthlyStatisticResponse'
  *       404:
  *         description: Tambo not found
  *       500:
@@ -343,6 +446,10 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *     responses:
  *       200:
  *         description: Successfully updated Monthly Statistic
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MonthlyStatisticResponse'
  *       400:
  *         description: Validation error
  *       404:

@@ -80,7 +80,8 @@ export async function updateUserHandler(req, res) {
 }
 export async function getAllUsersHandler(req, res) {
     try {
-        const users = await getAllUsers();
+        const status = req.query.status;
+        const users = await getAllUsers(status);
         return res.status(200).json(users);
     }
     catch (err) {

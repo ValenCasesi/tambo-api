@@ -224,6 +224,11 @@ export async function upsertMonthlyStatistic(input: MonthlyStatisticInput) {
         ? (vLitrosUsina + vLitrosDescarte + vLitrosGuachera) / diasMes / vVacasOrdene
         : 0;
 
+    let porcentajePartoVaquillonas = null;
+    if (vacasTotales > 0) {
+        porcentajePartoVaquillonas = (vPartosVaquillonas * 100) / vacasTotales;
+    }
+
     // Optional Fields Calculations
     let totalTernerosNacidosVivos = null;
     if (vTernerosMachosNacidosVivos != null && vTernerasHembrasNacidasVivas != null) {
@@ -348,7 +353,7 @@ export async function upsertMonthlyStatistic(input: MonthlyStatisticInput) {
         cantTernerasHembrasIngRecria: vCantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas: vCantHembrasRecriaHastaServMuertas,
         edadVaquillonasPrimerServicioMeses: vEdadVaquillonasPrimerServicioMeses, cantVacasMuertasMes: vCantVacasMuertasMes, cantVacasVendidasMes: vCantVacasVendidasMes,
 
-        partosTotales, vacasTotales, promedioLitrosVaca,
+        partosTotales, vacasTotales, promedioLitrosVaca, porcentajePartoVaquillonas,
         porcentajeNatimortos, totalTernerosNacidosVivos,
         porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes,
         refugoTotalVacas, porcentajeRefugoVacasMes, porcentajeRefugoVacasMensual,
@@ -623,6 +628,11 @@ export async function updateMonthlyStatistic(id: string, data: MonthlyStatisticU
         ? (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
         : 0;
 
+    let porcentajePartoVaquillonas = null;
+    if (vacasTotales > 0) {
+        porcentajePartoVaquillonas = (partosVaquillonas * 100) / vacasTotales;
+    }
+
     let totalTernerosNacidosVivos = null;
     if (ternerosMachosNacidosVivos != null && ternerasHembrasNacidasVivas != null) {
         totalTernerosNacidosVivos = ternerosMachosNacidosVivos + ternerasHembrasNacidasVivas;
@@ -757,6 +767,7 @@ export async function updateMonthlyStatistic(id: string, data: MonthlyStatisticU
             partosTotales,
             vacasTotales,
             promedioLitrosVaca,
+            porcentajePartoVaquillonas,
             porcentajeNatimortos,
             totalTernerosNacidosVivos,
             porcentajeTernerosMuertosGuacheraMes,

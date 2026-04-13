@@ -39,7 +39,15 @@ const router = Router();
  *  get:
  *     tags:
  *     - Users
- *     summary: Get all active users
+ *     summary: Get all users (except pending by default)
+ *     parameters:
+ *      - in: query
+ *        name: status
+ *        schema:
+ *          type: string
+ *          enum: [ACTIVE, INACTIVE, DELETED, PENDING]
+ *        required: false
+ *        description: Filtrar por estado de usuario.
  *     responses:
  *       200:
  *         description: Success
