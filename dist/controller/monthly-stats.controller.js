@@ -40,7 +40,7 @@ const monthlyStatSchema = z.object({
 export async function upsertMonthlyStatisticHandler(req, res) {
     try {
         const parsed = monthlyStatSchema.parse(req.body);
-        const result = await upsertMonthlyStatistic(parsed);
+        const result = await upsertMonthlyStatistic(parsed, req.user);
         return res.status(200).json(result);
     }
     catch (err) {
@@ -61,7 +61,7 @@ export async function getAnnualStatisticsHandler(req, res) {
         if (isNaN(year) || year < 2000 || year > 2100) {
             return res.status(400).json({ error: "Año inválido" });
         }
-        const data = await getAnnualStatistics(tamboId, year);
+        const data = await getAnnualStatistics(tamboId, year, req.user);
         return res.status(200).json(data);
     }
     catch (err) {
@@ -74,7 +74,7 @@ export async function getAnnualStatisticsHandler(req, res) {
 }
 export async function getAllMonthlyStatisticsHandler(req, res) {
     try {
-        const stats = await getAllMonthlyStatistics();
+        const stats = await getAllMonthlyStatistics(req.user);
         return res.status(200).json(stats);
     }
     catch (err) {
@@ -85,7 +85,7 @@ export async function getAllMonthlyStatisticsHandler(req, res) {
 export async function getMonthlyStatisticsByTamboHandler(req, res) {
     try {
         const tamboId = req.params.tamboId;
-        const stats = await getMonthlyStatisticsByTambo(tamboId);
+        const stats = await getMonthlyStatisticsByTambo(tamboId, req.user);
         return res.status(200).json(stats);
     }
     catch (err) {
@@ -135,7 +135,7 @@ export async function updateMonthlyStatisticHandler(req, res) {
     try {
         const id = req.params.id;
         const parsed = monthlyStatUpdateSchema.parse(req.body);
-        const result = await updateMonthlyStatistic(id, parsed);
+        const result = await updateMonthlyStatistic(id, parsed, req.user);
         return res.status(200).json(result);
     }
     catch (err) {
@@ -152,7 +152,7 @@ export async function updateMonthlyStatisticHandler(req, res) {
 export async function deleteMonthlyStatisticHandler(req, res) {
     try {
         const id = req.params.id;
-        await deleteMonthlyStatistic(id);
+        await deleteMonthlyStatistic(id, req.user);
         return res.status(200).json({ message: "Estadística eliminada exitosamente" });
     }
     catch (err) {

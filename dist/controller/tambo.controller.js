@@ -22,6 +22,9 @@ export async function createTamboHandler(req, res) {
         // En un caso real con auth, el userId podría venir de req.user.id
         // Asumiendo que se pasa en el body por ahora:
         const parsed = tamboSchema.parse(req.body);
+        if (req.user && req.user.role === "PRODUCTOR") {
+            parsed.userId = req.user.id;
+        }
         const tambo = await createTambo(parsed);
         return res.status(201).json(tambo);
     }
@@ -38,7 +41,7 @@ export async function createTamboHandler(req, res) {
 }
 export async function getAllTambosHandler(req, res) {
     try {
-        const tambos = await getAllTambos();
+        const tambos = await getAllTambos(req.user);
         return res.status(200).json(tambos);
     }
     catch (err) {
@@ -49,6 +52,9 @@ export async function getAllTambosHandler(req, res) {
 export async function getTambosByUserHandler(req, res) {
     try {
         const userId = req.params.userId;
+        if (req.user && req.user.role === "PRODUCTOR" && req.user.id !== userId) {
+            return res.status(403).json({ error: "No puedes ver tambos de otros productores" });
+        }
         const tambos = await getTambosByUser(userId);
         return res.status(200).json(tambos);
     }
@@ -62,7 +68,7 @@ export async function updateTamboHandler(req, res) {
     try {
         const tamboId = req.params.id;
         const parsed = tamboUpdateSchema.parse(req.body);
-        const tambo = await updateTambo(tamboId, parsed);
+        const tambo = await updateTambo(tamboId, parsed, req.user);
         return res.status(200).json(tambo);
     }
     catch (err) {
@@ -79,7 +85,7 @@ export async function updateTamboHandler(req, res) {
 export async function deleteTamboHandler(req, res) {
     try {
         const tamboId = req.params.id;
-        await deleteTambo(tamboId);
+        await deleteTambo(tamboId, req.user);
         return res.status(200).json({ message: "Tambo eliminado exitosamente" });
     }
     catch (err) {

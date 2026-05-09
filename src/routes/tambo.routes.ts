@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createTamboHandler, getAllTambosHandler, getTambosByUserHandler, updateTamboHandler, deleteTamboHandler } from "../controller/tambo.controller.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -67,7 +68,7 @@ const router = Router();
  *       500:
  *         description: Internal server error
  */
-router.post("/", createTamboHandler);
+router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), createTamboHandler);
 
 /**
  * @openapi
@@ -82,7 +83,7 @@ router.post("/", createTamboHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/", getAllTambosHandler);
+router.get("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAllTambosHandler);
 
 /**
  * @openapi
@@ -104,7 +105,7 @@ router.get("/", getAllTambosHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/user/:userId", getTambosByUserHandler);
+router.get("/user/:userId", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getTambosByUserHandler);
 
 /**
  * @openapi
@@ -152,7 +153,7 @@ router.get("/user/:userId", getTambosByUserHandler);
  *       500:
  *         description: Internal server error
  */
-router.put("/:id", updateTamboHandler);
+router.put("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), updateTamboHandler);
 
 /**
  * @openapi
@@ -176,6 +177,6 @@ router.put("/:id", updateTamboHandler);
  *       500:
  *         description: Internal server error
  */
-router.delete("/:id", deleteTamboHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deleteTamboHandler);
 
 export default router;

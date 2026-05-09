@@ -88,7 +88,7 @@ export async function updateProductHandler(req: Request, res: Response) {
             id,
             ...parsed,
             ...(req.files && Array.isArray(req.files) && req.files.length > 0 ? { images: imageUrls } : {}),
-        });
+        }, req.user);
 
         return res.status(200).json(product);
     } catch (err: any) {
@@ -106,7 +106,7 @@ export async function updateProductHandler(req: Request, res: Response) {
 export async function deleteProductHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const result = await deleteProduct(id);
+        const result = await deleteProduct(id, req.user);
         return res.status(200).json(result);
     } catch (err: any) {
         if (err?.status && err?.message) {
@@ -126,7 +126,7 @@ export async function removeProductImageHandler(req: Request, res: Response) {
         const id = req.params.id as string;
         const parsed = removeImageSchema.parse(req.body);
 
-        const result = await removeProductImage(id, parsed.imageUrl);
+        const result = await removeProductImage(id, parsed.imageUrl, req.user);
         return res.status(200).json(result);
     } catch (err: any) {
         if (err?.status && err?.message) {

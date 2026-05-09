@@ -35,8 +35,10 @@ export async function createTambo(data: TamboCreateInput) {
     return tambo;
 }
 
-export async function getAllTambos() {
+export async function getAllTambos(actor?: { id: string; role: string }) {
+    const where = actor && actor.role === "PRODUCTOR" ? { userId: actor.id } : {};
     return await prisma.tambo.findMany({
+        where,
         include: {
             user: {
                 select: {
@@ -69,7 +71,7 @@ export async function getTambosByUser(userId: string) {
 }
 export type TamboUpdateInput = Partial<Omit<TamboCreateInput, "userId">>;
 
-export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
+export async function updateTambo(tamboId: string, data: TamboUpdateInput, actor?: { id: string; role: string }) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
@@ -77,6 +79,10 @@ export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
 
     if (!existingTambo) {
         throw { status: 404, message: "Tambo no encontrado" };
+    }
+
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes modificar tambos que no te pertenecen" };
     }
 
     // Actualizar tambo
@@ -88,7 +94,7 @@ export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
     return tambo;
 }
 
-export async function deleteTambo(tamboId: string) {
+export async function deleteTambo(tamboId: string, actor?: { id: string; role: string }) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
@@ -96,6 +102,10 @@ export async function deleteTambo(tamboId: string) {
 
     if (!existingTambo) {
         throw { status: 404, message: "Tambo no encontrado" };
+    }
+
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes eliminar tambos que no te pertenecen" };
     }
 
     // Baja lógica

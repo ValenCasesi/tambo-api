@@ -218,9 +218,16 @@ export async function createRequest(tenderId: string, producerId: string, quanti
     });
     if (existing) throw { status: 409, message: "Ya existe un pedido para esta licitación. Usá el endpoint de actualización." };
 
-    return await prisma.tenderRequest.create({
+    const request = await prisma.tenderRequest.create({
         data: { tenderId, producerId, quantity, notes }
     });
+
+    await prisma.tender.update({
+        where: { id: tenderId },
+        data: { totalPedidoTender: { increment: quantity } }
+    });
+
+    return request;
 }
 
 export async function getRequestsByTender(tenderId: string) {
@@ -243,10 +250,21 @@ export async function updateRequest(requestId: string, producerId: string, quant
         throw { status: 400, message: "La etapa de pedidos ya cerró, no se puede modificar" };
     }
 
-    return await prisma.tenderRequest.update({
+    const diff = quantity - Number(request.quantity);
+
+    const updated = await prisma.tenderRequest.update({
         where: { id: requestId },
         data: { quantity, notes }
     });
+
+    if (diff !== 0) {
+        await prisma.tender.update({
+            where: { id: tender.id },
+            data: { totalPedidoTender: { increment: diff } }
+        });
+    }
+
+    return updated;
 }
 
 export async function deleteRequest(requestId: string, producerId: string) {
@@ -259,7 +277,14 @@ export async function deleteRequest(requestId: string, producerId: string) {
         throw { status: 400, message: "La etapa de pedidos ya cerró, no se puede eliminar" };
     }
 
-    return await prisma.tenderRequest.delete({ where: { id: requestId } });
+    const deleted = await prisma.tenderRequest.delete({ where: { id: requestId } });
+
+    await prisma.tender.update({
+        where: { id: tender.id },
+        data: { totalPedidoTender: { decrement: Number(request.quantity) } }
+    });
+
+    return deleted;
 }
 
 // ==========================================
@@ -285,6 +310,9 @@ export async function createProposal(tenderId: string, data: ProposalInput) {
     }
 
     const now = new Date();
+    if (now < tender.proposalStartDate) {
+        throw { status: 400, message: "La etapa de carga de ofertas aún no comenzó" };
+    }
     if (now > tender.proposalDeadline) {
         throw { status: 400, message: "El plazo de carga de ofertas ya venció" };
     }

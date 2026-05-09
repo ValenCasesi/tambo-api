@@ -41,6 +41,15 @@ export type MonthlyStatisticInput = {
 // ==========================================
 // SYNC YEARLY PROJECTIONS HELPER
 // ==========================================
+
+async function checkOwnership(tamboId: string, actor?: { id: string; role: string }) {
+    if (actor && actor.role === "PRODUCTOR") {
+        const tambo = await prisma.tambo.findUnique({ where: { id: tamboId }, select: { userId: true } });
+        if (!tambo || tambo.userId !== actor.id) {
+            throw { status: 403, message: "No puedes acceder a estadísticas de un tambo ajeno" };
+        }
+    }
+}
 async function syncYearlyProjections(tamboId: string, year: number) {
     // Traverse all months of this year for this tambo to calculate accumulatives
     const months = await prisma.monthlyStatistic.findMany({
@@ -161,7 +170,7 @@ async function syncYearlyProjections(tamboId: string, year: number) {
     }
 }
 
-export async function upsertMonthlyStatistic(input: MonthlyStatisticInput) {
+export async function upsertMonthlyStatistic(input: MonthlyStatisticInput, actor?: { id: string; role: string }) {
     const {
         tamboId, period,
         // ... inputs will be safely grabbed and coalesced
@@ -169,6 +178,8 @@ export async function upsertMonthlyStatistic(input: MonthlyStatisticInput) {
 
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo not found" };
+
+    await checkOwnership(tamboId, actor);
 
     const month = parseInt(period.substring(4, 6), 10);
     const year = parseInt(period.substring(0, 4), 10);
@@ -396,9 +407,11 @@ export async function upsertMonthlyStatistic(input: MonthlyStatisticInput) {
     return result;
 }
 
-export async function getAnnualStatistics(tamboId: string, year: number) {
+export async function getAnnualStatistics(tamboId: string, year: number, actor?: { id: string; role: string }) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo not found" };
+
+    await checkOwnership(tamboId, actor);
 
     const aggregates = await prisma.monthlyStatistic.aggregate({
         where: { tamboId, year },
@@ -555,16 +568,20 @@ export async function getAnnualStatistics(tamboId: string, year: number) {
     };
 }
 
-export async function getAllMonthlyStatistics() {
+export async function getAllMonthlyStatistics(actor?: { id: string; role: string }) {
+    const where = actor && actor.role === "PRODUCTOR" ? { tambo: { userId: actor.id } } : {};
     return await prisma.monthlyStatistic.findMany({
+        where,
         orderBy: [{ year: 'desc' }, { month: 'desc' }],
         include: { tambo: { select: { id: true, name: true, location: true } } }
     });
 }
 
-export async function getMonthlyStatisticsByTambo(tamboId: string) {
+export async function getMonthlyStatisticsByTambo(tamboId: string, actor?: { id: string; role: string }) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo not found" };
+
+    await checkOwnership(tamboId, actor);
 
     return await prisma.monthlyStatistic.findMany({
         where: { tamboId },
@@ -574,9 +591,11 @@ export async function getMonthlyStatisticsByTambo(tamboId: string) {
 
 export type MonthlyStatisticUpdateInput = Partial<Omit<MonthlyStatisticInput, "tamboId" | "period">>;
 
-export async function updateMonthlyStatistic(id: string, data: MonthlyStatisticUpdateInput) {
+export async function updateMonthlyStatistic(id: string, data: MonthlyStatisticUpdateInput, actor?: { id: string; role: string }) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "Estadística mensual no encontrada" };
+
+    await checkOwnership(existing.tamboId, actor);
 
     const merged = { ...existing, ...data };
 
@@ -808,9 +827,11 @@ export async function updateMonthlyStatistic(id: string, data: MonthlyStatisticU
     return result;
 }
 
-export async function deleteMonthlyStatistic(id: string) {
+export async function deleteMonthlyStatistic(id: string, actor?: { id: string; role: string }) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "Estadística mensual no encontrada" };
+
+    await checkOwnership(existing.tamboId, actor);
 
     const result = await prisma.monthlyStatistic.delete({
         where: { id }

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createTenderHandler, getTendersHandler, getTenderByIdHandler, updateTenderHandler, publishTenderHandler, awardTenderHandler, deleteTenderHandler, createRequestHandler, getRequestsByTenderHandler, updateRequestHandler, deleteRequestHandler, createProposalHandler, getProposalsHandler, getMyProposalHandler, getAwardedInfoHandler } from "../controller/tender.controller.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
  * @openapi
@@ -96,7 +97,7 @@ const router = Router();
  *       400:
  *         description: Error de validación
  */
-router.post("/", createTenderHandler);
+router.post("/", requireAuth, requireRole(["ADMIN"]), createTenderHandler);
 /**
  * @openapi
  * /api/tenders:
@@ -114,7 +115,7 @@ router.post("/", createTenderHandler);
  *       200:
  *         description: Success
  */
-router.get("/", getTendersHandler);
+router.get("/", requireAuth, getTendersHandler);
 /**
  * @openapi
  * /api/tenders/{id}:
@@ -132,7 +133,7 @@ router.get("/", getTendersHandler);
  *       404:
  *         description: Not found
  */
-router.get("/:id", getTenderByIdHandler);
+router.get("/:id", requireAuth, getTenderByIdHandler);
 /**
  * @openapi
  * /api/tenders/{id}:
@@ -156,7 +157,7 @@ router.get("/:id", getTenderByIdHandler);
  *       400:
  *         description: No se puede editar fuera de DRAFT
  */
-router.put("/:id", updateTenderHandler);
+router.put("/:id", requireAuth, requireRole(["ADMIN"]), updateTenderHandler);
 /**
  * @openapi
  * /api/tenders/{id}/publish:
@@ -174,7 +175,7 @@ router.put("/:id", updateTenderHandler);
  *       400:
  *         description: Estado inválido o fechas incoherentes
  */
-router.post("/:id/publish", publishTenderHandler);
+router.post("/:id/publish", requireAuth, requireRole(["ADMIN"]), publishTenderHandler);
 /**
  * @openapi
  * /api/tenders/{id}/award:
@@ -203,7 +204,7 @@ router.post("/:id/publish", publishTenderHandler);
  *       400:
  *         description: Estado inválido o usuario no es EMPRESA
  */
-router.post("/:id/award", awardTenderHandler);
+router.post("/:id/award", requireAuth, requireRole(["ADMIN"]), awardTenderHandler);
 /**
  * @openapi
  * /api/tenders/{id}:
@@ -221,7 +222,7 @@ router.post("/:id/award", awardTenderHandler);
  *       400:
  *         description: No se puede eliminar fuera de DRAFT
  */
-router.delete("/:id", deleteTenderHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN"]), deleteTenderHandler);
 // ==========================================
 // REQUEST ROUTES (Productores)
 // ==========================================
@@ -250,7 +251,7 @@ router.delete("/:id", deleteTenderHandler);
  *       409:
  *         description: Ya existe un pedido para esta licitación
  */
-router.post("/:id/requests", createRequestHandler);
+router.post("/:id/requests", requireAuth, requireRole(["PRODUCTOR"]), createRequestHandler);
 /**
  * @openapi
  * /api/tenders/{id}/requests:
@@ -266,7 +267,7 @@ router.post("/:id/requests", createRequestHandler);
  *       200:
  *         description: Success
  */
-router.get("/:id/requests", getRequestsByTenderHandler);
+router.get("/:id/requests", requireAuth, requireRole(["ADMIN"]), getRequestsByTenderHandler);
 /**
  * @openapi
  * /api/tenders/{id}/requests/{requestId}:
@@ -304,7 +305,7 @@ router.get("/:id/requests", getRequestsByTenderHandler);
  *       403:
  *         description: No autorizado
  */
-router.put("/:id/requests/:requestId", updateRequestHandler);
+router.put("/:id/requests/:requestId", requireAuth, requireRole(["PRODUCTOR"]), updateRequestHandler);
 /**
  * @openapi
  * /api/tenders/{id}/requests/{requestId}:
@@ -336,7 +337,7 @@ router.put("/:id/requests/:requestId", updateRequestHandler);
  *       403:
  *         description: No autorizado
  */
-router.delete("/:id/requests/:requestId", deleteRequestHandler);
+router.delete("/:id/requests/:requestId", requireAuth, requireRole(["PRODUCTOR"]), deleteRequestHandler);
 // ==========================================
 // PROPOSAL ROUTES (Empresas)
 // ==========================================
@@ -365,7 +366,7 @@ router.delete("/:id/requests/:requestId", deleteRequestHandler);
  *       409:
  *         description: Ya existe una oferta para esta licitación
  */
-router.post("/:id/proposals", createProposalHandler);
+router.post("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), createProposalHandler);
 /**
  * @openapi
  * /api/tenders/{id}/proposals:
@@ -383,7 +384,7 @@ router.post("/:id/proposals", createProposalHandler);
  *       403:
  *         description: Las ofertas no son visibles hasta el cierre
  */
-router.get("/:id/proposals", getProposalsHandler);
+router.get("/:id/proposals", requireAuth, requireRole(["ADMIN"]), getProposalsHandler);
 /**
  * @openapi
  * /api/tenders/{id}/proposals/my:
@@ -405,7 +406,7 @@ router.get("/:id/proposals", getProposalsHandler);
  *       404:
  *         description: No encontrada
  */
-router.get("/:id/proposals/my", getMyProposalHandler);
+router.get("/:id/proposals/my", requireAuth, requireRole(["EMPRESA"]), getMyProposalHandler);
 /**
  * @openapi
  * /api/tenders/{id}/awarded-info:
@@ -429,5 +430,5 @@ router.get("/:id/proposals/my", getMyProposalHandler);
  *       400:
  *         description: Resultado aún no publicado
  */
-router.get("/:id/awarded-info", getAwardedInfoHandler);
+router.get("/:id/awarded-info", requireAuth, requireRole(["EMPRESA"]), getAwardedInfoHandler);
 export default router;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { loginHandler, logoutHandler, acceptTermsHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "../controller/auth.controller.js";
+import { requireAuth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -88,7 +89,7 @@ router.post("/login", loginHandler);
  *       500:
  *         description: Error de servidor
  */
-router.post("/logout", logoutHandler);
+router.post("/logout", requireAuth, logoutHandler);
 
 /**
  * @openapi
@@ -110,7 +111,7 @@ router.post("/logout", logoutHandler);
  *       200:
  *         description: Success
  */
-router.put("/accept-terms", acceptTermsHandler);
+router.put("/accept-terms", requireAuth, acceptTermsHandler);
 
 /**
  * @openapi
@@ -136,7 +137,7 @@ router.put("/accept-terms", acceptTermsHandler);
  *       200:
  *         description: Success
  */
-router.put("/change-password", changePasswordHandler);
+router.put("/change-password", requireAuth, changePasswordHandler);
 
 /**
  * @openapi

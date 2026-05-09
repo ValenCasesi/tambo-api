@@ -18,8 +18,10 @@ export async function createTambo(data) {
     });
     return tambo;
 }
-export async function getAllTambos() {
+export async function getAllTambos(actor) {
+    const where = actor && actor.role === "PRODUCTOR" ? { userId: actor.id } : {};
     return await prisma.tambo.findMany({
+        where,
         include: {
             user: {
                 select: {
@@ -49,13 +51,16 @@ export async function getTambosByUser(userId) {
         orderBy: { createdAt: "desc" }
     });
 }
-export async function updateTambo(tamboId, data) {
+export async function updateTambo(tamboId, data, actor) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
     });
     if (!existingTambo) {
         throw { status: 404, message: "Tambo no encontrado" };
+    }
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes modificar tambos que no te pertenecen" };
     }
     // Actualizar tambo
     const tambo = await prisma.tambo.update({
@@ -64,13 +69,16 @@ export async function updateTambo(tamboId, data) {
     });
     return tambo;
 }
-export async function deleteTambo(tamboId) {
+export async function deleteTambo(tamboId, actor) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
     });
     if (!existingTambo) {
         throw { status: 404, message: "Tambo no encontrado" };
+    }
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes eliminar tambos que no te pertenecen" };
     }
     // Baja lógica
     const tambo = await prisma.tambo.update({
