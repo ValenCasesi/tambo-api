@@ -15,6 +15,10 @@ type CreateProductInput = {
 export async function createProduct(input: CreateProductInput) {
     const { producerId, name, description, category, price, unit, location, images } = input;
 
+    if (images && images.length > 3) {
+        throw { status: 400, message: "Un producto puede tener un máximo de 3 imágenes" };
+    }
+
     // Optional: Verify if the user exists and is a producer
     const producer = await prisma.user.findUnique({ where: { id: producerId } });
     if (!producer) throw { status: 404, message: "Producer not found" };
@@ -86,6 +90,11 @@ export async function updateProduct(input: UpdateProductInput) {
 
     // If new images arrive, concatenate them to the current ones. We typecast as an array of strings since Prisma assumes Json.
     const currentImages = Array.isArray(existing.images) ? (existing.images as string[]) : [];
+
+    if (images && currentImages.length + images.length > 3) {
+        throw { status: 400, message: "Un producto puede tener un máximo de 3 imágenes" };
+    }
+
     const updatedImages = images && images.length > 0 ? [...currentImages, ...images] : currentImages;
 
     const updated = await prisma.marketplaceProduct.update({

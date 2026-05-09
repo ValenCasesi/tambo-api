@@ -1,6 +1,7 @@
 import prisma from "../prisma/client.js";
 import { TenderStatus } from "@prisma/client";
 import { randomBytes } from "crypto";
+import { sendMail, buildHtmlTemplate } from "./email.service.js";
 
 // ==========================================
 // HELPER: Auto-transition by dates (Option A)
@@ -125,10 +126,44 @@ export async function publishTender(id: string) {
     if (tender.proposalStartDate >= tender.proposalDeadline) {
         throw { status: 400, message: "La fecha de inicio de ofertas debe ser anterior al cierre de ofertas" };
     }
-    return await prisma.tender.update({
+    
+    const updatedTender = await prisma.tender.update({
         where: { id },
         data: { status: TenderStatus.ACCEPTING_REQUESTS }
     });
+
+    // Notify active producers and companies
+    const targetUsers = await prisma.user.findMany({
+        where: {
+            status: "ACTIVE",
+            role: { in: ["PRODUCTOR", "EMPRESA"] }
+        }
+    });
+
+    for (const user of targetUsers) {
+        const subject = `¡Nueva Licitación Publicada! - ${tender.title}`;
+        const html = buildHtmlTemplate({
+            title: `¡Nueva Licitación Publicada!`,
+            messageLines: [
+                `Hola ${user.firstName},`,
+                `Se ha publicado una nueva licitación en Sinergia Plataforma.`,
+                `<b>Producto:</b> ${tender.product}`,
+                `<b>Especificaciones:</b> ${tender.specifications}`,
+                `<b>Apertura de pedidos (Productores):</b> ${tender.requestStartDate.toLocaleDateString('es-AR')}`,
+                `<b>Cierre de pedidos (Productores):</b> ${tender.requestDeadline.toLocaleDateString('es-AR')}`,
+                `<b>Apertura de ofertas (Empresas):</b> ${tender.proposalStartDate.toLocaleDateString('es-AR')}`,
+                `<b>Cierre de ofertas (Empresas):</b> ${tender.proposalDeadline.toLocaleDateString('es-AR')}`,
+                `Ingresa a la plataforma para ver más detalles.`
+            ],
+            buttonText: "Ver Licitación",
+            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+        });
+
+        sendMail(user.email, subject, "Se ha publicado una nueva licitación en Sinergia Plataforma.", html)
+            .catch(err => console.error(`Error enviando email a ${user.email}:`, err));
+    }
+
+    return updatedTender;
 }
 
 export async function awardTender(id: string, winnerId: string) {
