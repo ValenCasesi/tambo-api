@@ -109,9 +109,11 @@ router.get("/", getAllProductsHandler);
  *            location:
  *              type: string
  *            image:
- *              type: string
- *              format: binary
- *              description: The product image to upload to Cloudinary
+ *              type: array
+ *              items:
+ *                type: string
+ *                format: binary
+ *              description: Up to 3 product images to upload to Cloudinary
  *     responses:
  *       201:
  *         description: Created successfully
@@ -124,7 +126,7 @@ router.get("/", getAllProductsHandler);
  *       404:
  *         description: Producer not found
  */
-router.post("/", upload.single("image"), createProductHandler);
+router.post("/", upload.array("image", 3), createProductHandler);
 
 /**
  * @openapi
@@ -162,15 +164,18 @@ router.post("/", upload.single("image"), createProductHandler);
  *            isAvailable:
  *              type: boolean
  *            image:
- *              type: string
- *              format: binary
+ *              type: array
+ *              items:
+ *                type: string
+ *                format: binary
+ *              description: Up to 3 product images to upload to Cloudinary
  *     responses:
  *       200:
  *         description: Updated successfully
  *       404:
  *         description: Product not found
  */
-router.put("/:id", upload.single("image"), updateProductHandler);
+router.put("/:id", upload.array("image", 3), updateProductHandler);
 
 /**
  * @openapi

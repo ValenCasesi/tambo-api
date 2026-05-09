@@ -17,12 +17,14 @@ export async function createProductHandler(req: Request, res: Response) {
     try {
         let imageUrls: string[] = [];
 
-        if (req.file) {
-            const b64 = Buffer.from(req.file.buffer).toString("base64");
-            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
-            // Upload explicitly to a products folder
-            const uploadedUrl = await uploadImage(dataURI, "tambo_products");
-            imageUrls.push(uploadedUrl);
+        if (req.files && Array.isArray(req.files)) {
+            for (const file of req.files) {
+                const b64 = Buffer.from(file.buffer).toString("base64");
+                const dataURI = "data:" + file.mimetype + ";base64," + b64;
+                // Upload explicitly to a products folder
+                const uploadedUrl = await uploadImage(dataURI, "tambo_products");
+                imageUrls.push(uploadedUrl);
+            }
         }
 
         const parsed = createProductSchema.parse(req.body);
@@ -71,11 +73,13 @@ export async function updateProductHandler(req: Request, res: Response) {
         const id = req.params.id as string;
         let imageUrls: string[] = [];
 
-        if (req.file) {
-            const b64 = Buffer.from(req.file.buffer).toString("base64");
-            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
-            const uploadedUrl = await uploadImage(dataURI, "tambo_products");
-            imageUrls.push(uploadedUrl);
+        if (req.files && Array.isArray(req.files)) {
+            for (const file of req.files) {
+                const b64 = Buffer.from(file.buffer).toString("base64");
+                const dataURI = "data:" + file.mimetype + ";base64," + b64;
+                const uploadedUrl = await uploadImage(dataURI, "tambo_products");
+                imageUrls.push(uploadedUrl);
+            }
         }
 
         const parsed = updateProductSchema.parse(req.body);
@@ -83,7 +87,7 @@ export async function updateProductHandler(req: Request, res: Response) {
         const product = await updateProduct({
             id,
             ...parsed,
-            ...(req.file ? { images: imageUrls } : {}),
+            ...(req.files && Array.isArray(req.files) && req.files.length > 0 ? { images: imageUrls } : {}),
         });
 
         return res.status(200).json(product);

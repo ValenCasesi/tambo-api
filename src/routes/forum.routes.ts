@@ -258,7 +258,7 @@ router.put("/comments/:id", updateCommentHandler);
  *  delete:
  *     tags:
  *     - Forum
- *     summary: Soft delete an existing comment
+ *     summary: Physically delete an existing comment and its replies (cascade)
  *     parameters:
  *      - name: id
  *        in: path
