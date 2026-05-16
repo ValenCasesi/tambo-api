@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createTamboHandler, getAllTambosHandler, getTambosByUserHandler, updateTamboHandler, deleteTamboHandler } from "../controller/tambo.controller.js";
+import { createTamboHandler, getAllTambosHandler, getTambosByUserHandler, updateTamboHandler, deleteTamboHandler, hardDeleteTamboHandler } from "../controller/tambo.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
@@ -72,7 +72,33 @@ router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), createTamboHa
  *  get:
  *     tags:
  *     - Tambos
- *     summary: Get all Tambos
+ *     summary: Get all Tambos (with pagination and filters)
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Number of items per page
+ *       - in: query
+ *         name: cuenca
+ *         schema:
+ *           type: string
+ *         description: Filter by cuenca
+ *       - in: query
+ *         name: size
+ *         schema:
+ *           type: string
+ *         description: Filter by size
+ *       - in: query
+ *         name: system
+ *         schema:
+ *           type: string
+ *         description: Filter by system
  *     responses:
  *       200:
  *         description: Success
@@ -171,4 +197,27 @@ router.put("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), updateTambo
  *         description: Internal server error
  */
 router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deleteTamboHandler);
+/**
+ * @openapi
+ * /api/tambos/{id}/hard:
+ *  delete:
+ *     tags:
+ *     - Tambos
+ *     summary: Hard delete an existing Tambo and its associated statistics
+ *     parameters:
+ *      - name: id
+ *        in: path
+ *        required: true
+ *        schema:
+ *          type: string
+ *          format: uuid
+ *     responses:
+ *       200:
+ *         description: Successfully deleted Tambo physically
+ *       404:
+ *         description: Tambo not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete("/:id/hard", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), hardDeleteTamboHandler);
 export default router;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo } from "../services/tambo.service.js";
+import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo, hardDeleteTambo } from "../services/tambo.service.js";
 const tamboSchema = z.object({
     userId: z.string().uuid("El userId debe ser un UUID válido"),
     name: z.string().min(1, "El nombre es requerido"),
@@ -41,8 +41,15 @@ export async function createTamboHandler(req, res) {
 }
 export async function getAllTambosHandler(req, res) {
     try {
-        const tambos = await getAllTambos(req.user);
-        return res.status(200).json(tambos);
+        const filters = {
+            cuenca: req.query.cuenca,
+            size: req.query.size,
+            system: req.query.system
+        };
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const result = await getAllTambos(req.user, filters, { page, limit });
+        return res.status(200).json(result);
     }
     catch (err) {
         console.error("getAllTambosHandler:", err);
@@ -93,6 +100,20 @@ export async function deleteTamboHandler(req, res) {
             return res.status(err.status).json({ error: err.message });
         }
         console.error("deleteTamboHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function hardDeleteTamboHandler(req, res) {
+    try {
+        const tamboId = req.params.id;
+        await hardDeleteTambo(tamboId, req.user);
+        return res.status(200).json({ message: "Tambo eliminado físicamente exitosamente" });
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("hardDeleteTamboHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

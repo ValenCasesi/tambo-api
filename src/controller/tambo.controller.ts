@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
-import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo } from "../services/tambo.service.js";
+import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo, hardDeleteTambo } from "../services/tambo.service.js";
 
 const tamboSchema = z.object({
     userId: z.string().uuid("El userId debe ser un UUID válido"),
@@ -44,8 +44,16 @@ export async function createTamboHandler(req: Request, res: Response) {
 
 export async function getAllTambosHandler(req: Request, res: Response) {
     try {
-        const tambos = await getAllTambos(req.user);
-        return res.status(200).json(tambos);
+        const filters = {
+            cuenca: req.query.cuenca as any,
+            size: req.query.size as any,
+            system: req.query.system as any
+        };
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+
+        const result = await getAllTambos(req.user, filters, { page, limit });
+        return res.status(200).json(result);
     } catch (err: any) {
         console.error("getAllTambosHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
@@ -96,6 +104,20 @@ export async function deleteTamboHandler(req: Request, res: Response) {
             return res.status(err.status).json({ error: err.message });
         }
         console.error("deleteTamboHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function hardDeleteTamboHandler(req: Request, res: Response) {
+    try {
+        const tamboId = req.params.id as string;
+        await hardDeleteTambo(tamboId, req.user);
+        return res.status(200).json({ message: "Tambo eliminado físicamente exitosamente" });
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("hardDeleteTamboHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
