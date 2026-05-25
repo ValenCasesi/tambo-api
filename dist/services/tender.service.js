@@ -85,6 +85,7 @@ async function closeAndAwardTender(tenderId) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `La licitación por <b>${tender.product}</b> ha finalizado y se ha seleccionado un ganador.`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
                     `<b>Empresa Ganadora:</b> ${winningProposal.company.firstName} ${winningProposal.company.lastName}`,
                     `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()}`,
                     `Ingresa a la plataforma para ver más detalles y acceder a los datos de contacto.`
@@ -116,6 +117,7 @@ async function closeAndAwardTender(tenderId) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `Te informamos que la licitación por <b>${tender.product}</b> ha finalizado su periodo de ofertas.`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
                     `Lamentablemente, no se recibió ninguna propuesta por parte de las empresas proveedoras, por lo que la licitación ha sido cerrada.`
                 ],
                 buttonText: "Ir a la Plataforma",

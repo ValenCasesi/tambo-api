@@ -6,7 +6,7 @@ import prisma from "../prisma/client.js";
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key";
 
 export interface AuthPayload {
-    userId: string;
+    id: string;
     role: string;
     email: string;
 }
@@ -36,7 +36,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
         const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
         
         const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
+            where: { id: decoded.id },
             select: { id: true, role: true, status: true, email: true }
         });
 

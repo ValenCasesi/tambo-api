@@ -10,7 +10,7 @@ export const requireAuth = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
+            where: { id: decoded.id },
             select: { id: true, role: true, status: true, email: true }
         });
         if (!user || user.status !== "ACTIVE") {
