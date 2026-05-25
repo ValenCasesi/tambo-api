@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+  url      = env("DATABASE_URL_DEV")
 }
 
 // ==========================================
@@ -297,7 +297,7 @@ model Tender {
   deliveryConditions String       @db.Text
   paymentOptions     Json // Array de strings: ["contado","30 días"]
   status             TenderStatus @default(DRAFT)
-  totalPedidoTender  Decimal      @db.Decimal(12, 2) @default(0)
+  totalPedidoTender  Decimal      @default(0) @db.Decimal(12, 2)
 
   requestStartDate  DateTime // Inicio: productores cargan pedidos
   requestDeadline   DateTime // Corte: fin de carga de pedidos
