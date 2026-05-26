@@ -267,7 +267,7 @@ router.post("/:id/requests", requireAuth, requireRole(["PRODUCTOR"]), createRequ
  *       200:
  *         description: Success
  */
-router.get("/:id/requests", requireAuth, requireRole(["ADMIN"]), getRequestsByTenderHandler);
+router.get("/:id/requests", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getRequestsByTenderHandler);
 /**
  * @openapi
  * /api/tenders/{id}/requests/{requestId}:
@@ -384,7 +384,7 @@ router.post("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), createPropo
  *       403:
  *         description: Las ofertas no son visibles hasta el cierre
  */
-router.get("/:id/proposals", requireAuth, requireRole(["ADMIN"]), getProposalsHandler);
+router.get("/:id/proposals", requireAuth, requireRole(["ADMIN", "EMPRESA"]), getProposalsHandler);
 /**
  * @openapi
  * /api/tenders/{id}/proposals/my:
