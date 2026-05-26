@@ -3,7 +3,8 @@ import {
     createTenderHandler, getTendersHandler, getTenderByIdHandler,
     updateTenderHandler, publishTenderHandler, awardTenderHandler, deleteTenderHandler,
     createRequestHandler, getRequestsByTenderHandler, updateRequestHandler, deleteRequestHandler,
-    createProposalHandler, getProposalsHandler, getMyProposalHandler, getAwardedInfoHandler
+    createProposalHandler, getProposalsHandler, getMyProposalHandler, getAwardedInfoHandler,
+    updateProposalHandler
 } from "../controller/tender.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 
@@ -389,6 +390,43 @@ router.delete("/:id/requests/:requestId", requireAuth, requireRole(["PRODUCTOR"]
  *         description: Ya existe una oferta para esta licitación
  */
 router.post("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), createProposalHandler);
+
+/**
+ * @openapi
+ * /api/tenders/{id}/proposals:
+ *  put:
+ *     tags: [Tenders - Ofertas]
+ *     summary: Empresa edita su oferta mientras la etapa esté abierta
+ *     parameters:
+ *      - name: id
+ *        in: path
+ *        required: true
+ *        schema: { type: string, format: uuid }
+ *     requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              companyId:
+ *                type: string
+ *                format: uuid
+ *              pricePerUnit:
+ *                type: number
+ *              paymentMethod:
+ *                type: string
+ *              logisticsConditions:
+ *                type: string
+ *              offerValidity:
+ *                type: string
+ *     responses:
+ *       200:
+ *         description: Oferta actualizada
+ *       400:
+ *         description: Etapa inválida o plazo vencido
+ */
+router.put("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), updateProposalHandler);
 
 /**
  * @openapi

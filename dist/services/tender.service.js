@@ -349,7 +349,7 @@ export async function createProposal(tenderId, data) {
         where: { tenderId_companyId: { tenderId, companyId: data.companyId } }
     });
     if (existing)
-        throw { status: 409, message: "Ya enviaste una oferta para esta licitación. Las ofertas no se pueden modificar una vez enviadas." };
+        throw { status: 409, message: "Ya enviaste una oferta para esta licitación." };
     const proposalCode = generateProposalCode();
     return await prisma.tenderProposal.create({
         data: {
@@ -361,6 +361,34 @@ export async function createProposal(tenderId, data) {
             logisticsConditions: data.logisticsConditions,
             offerValidity: data.offerValidity,
             isSubmitted: true,
+            submittedAt: now
+        }
+    });
+}
+export async function updateProposal(tenderId, companyId, data) {
+    const tender = await syncTenderStatus(tenderId);
+    if (tender.status !== TenderStatus.ACCEPTING_PROPOSALS) {
+        if (tender.status === TenderStatus.ACCEPTING_REQUESTS) {
+            throw { status: 400, message: "La etapa de pedidos aún está abierta. Las ofertas se aceptan después del corte de pedidos." };
+        }
+        throw { status: 400, message: "La licitación no está en la etapa de carga de ofertas" };
+    }
+    const now = new Date();
+    if (now < tender.proposalStartDate) {
+        throw { status: 400, message: "La etapa de carga de ofertas aún no comenzó" };
+    }
+    if (now > tender.proposalDeadline) {
+        throw { status: 400, message: "El plazo de carga de ofertas ya venció" };
+    }
+    const existing = await prisma.tenderProposal.findUnique({
+        where: { tenderId_companyId: { tenderId, companyId } }
+    });
+    if (!existing)
+        throw { status: 404, message: "No encontramos una oferta tuya para esta licitación" };
+    return await prisma.tenderProposal.update({
+        where: { tenderId_companyId: { tenderId, companyId } },
+        data: {
+            ...data,
             submittedAt: now
         }
     });
