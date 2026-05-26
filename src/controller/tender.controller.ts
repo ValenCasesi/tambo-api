@@ -213,17 +213,18 @@ export async function getProposalsHandler(req: Request, res: Response) {
 }
 
 const proposalUpdateSchema = z.object({
-    companyId: z.string().uuid("El companyId debe ser un UUID válido"),
     pricePerUnit: z.coerce.number().positive("El precio debe ser positivo").optional(),
     paymentMethod: z.string().min(1, "La forma de pago es requerida").optional(),
     logisticsConditions: z.string().min(1, "Las condiciones logísticas son requeridas").optional(),
     offerValidity: z.string().min(1, "La vigencia de la oferta es requerida").optional()
+}).refine(data => Object.keys(data).length > 0, {
+    message: "Debe enviar al menos un campo para actualizar"
 });
 
 export async function updateProposalHandler(req: Request, res: Response) {
     try {
         const parsed = proposalUpdateSchema.parse(req.body);
-        const proposals = await updateProposal(req.params["id"] as string, parsed.companyId, parsed);
+        const proposals = await updateProposal(req.params["id"] as string, req.user!.id, parsed);
         return res.status(200).json(proposals);
     } catch (err: any) {
         return handleError(err, res, "updateProposalHandler");

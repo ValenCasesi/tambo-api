@@ -385,9 +385,6 @@ router.post("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), createPropo
  *          schema:
  *            type: object
  *            properties:
- *              companyId:
- *                type: string
- *                format: uuid
  *              pricePerUnit:
  *                type: number
  *              paymentMethod:
