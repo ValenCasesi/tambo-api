@@ -493,7 +493,7 @@ export async function getProposals(tenderId: string) {
         include: {
             company: { select: { id: true, firstName: true, lastName: true } }
         },
-        orderBy: { pricePerUnit: "asc" } // Ranking por precio ascendente
+        orderBy: { pricePerUnit: "asc" }
     });
 }
 

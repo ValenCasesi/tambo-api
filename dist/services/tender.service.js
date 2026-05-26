@@ -403,7 +403,7 @@ export async function getProposals(tenderId) {
         include: {
             company: { select: { id: true, firstName: true, lastName: true } }
         },
-        orderBy: { pricePerUnit: "asc" } // Ranking por precio ascendente
+        orderBy: { pricePerUnit: "asc" }
     });
 }
 export async function getMyProposal(tenderId, companyId) {

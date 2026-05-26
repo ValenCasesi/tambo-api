@@ -276,7 +276,7 @@ router.post("/:id/requests", requireAuth, requireRole(["PRODUCTOR"]), createRequ
  * /api/tenders/{id}/requests:
  *  get:
  *     tags: [Tenders - Pedidos]
- *     summary: Listar todos los pedidos de una licitación (Admin)
+ *     summary: Listar todos los pedidos de una licitación (Admin, Productor, Empresa)
  *     parameters:
  *      - name: id
  *        in: path
@@ -286,7 +286,7 @@ router.post("/:id/requests", requireAuth, requireRole(["PRODUCTOR"]), createRequ
  *       200:
  *         description: Success
  */
-router.get("/:id/requests", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getRequestsByTenderHandler);
+router.get("/:id/requests", requireAuth, requireRole(["ADMIN", "PRODUCTOR", "EMPRESA"]), getRequestsByTenderHandler);
 
 /**
  * @openapi
@@ -430,7 +430,8 @@ router.put("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), updatePropos
  * /api/tenders/{id}/proposals:
  *  get:
  *     tags: [Tenders - Ofertas]
- *     summary: Ver todas las ofertas con ranking (solo post-cierre)
+ *     summary: Ver todas las ofertas con ranking (Admin, Productor, Empresa)
+ *     description: Solo visible después del cierre de la licitación. Retorna ranking ordenado por precio ASC.
  *     parameters:
  *      - name: id
  *        in: path
@@ -442,7 +443,7 @@ router.put("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), updatePropos
  *       403:
  *         description: Las ofertas no son visibles hasta el cierre
  */
-router.get("/:id/proposals", requireAuth, requireRole(["ADMIN", "EMPRESA"]), getProposalsHandler);
+router.get("/:id/proposals", requireAuth, requireRole(["ADMIN", "PRODUCTOR", "EMPRESA"]), getProposalsHandler);
 
 /**
  * @openapi
