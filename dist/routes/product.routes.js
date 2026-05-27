@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createProductHandler, getAllProductsHandler, updateProductHandler, deleteProductHandler, removeProductImageHandler } from "../controller/product.controller.js";
 import { upload } from "../middlewares/upload.middleware.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
  * @openapi
@@ -74,7 +75,7 @@ const router = Router();
  *               items:
  *                 $ref: '#/components/schemas/ProductResponse'
  */
-router.get("/", getAllProductsHandler);
+router.get("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAllProductsHandler);
 /**
  * @openapi
  * /api/products:
@@ -122,7 +123,7 @@ router.get("/", getAllProductsHandler);
  *       404:
  *         description: Producer not found
  */
-router.post("/", upload.array("image", 3), createProductHandler);
+router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upload.array("image", 3), createProductHandler);
 /**
  * @openapi
  * /api/products/{id}:
@@ -170,7 +171,7 @@ router.post("/", upload.array("image", 3), createProductHandler);
  *       404:
  *         description: Product not found
  */
-router.put("/:id", upload.array("image", 3), updateProductHandler);
+router.put("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upload.array("image", 3), updateProductHandler);
 /**
  * @openapi
  * /api/products/{id}:
@@ -193,7 +194,7 @@ router.put("/:id", upload.array("image", 3), updateProductHandler);
  *       404:
  *         description: Product not found
  */
-router.delete("/:id", deleteProductHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deleteProductHandler);
 /**
  * @openapi
  * /api/products/{id}/images:
@@ -226,5 +227,5 @@ router.delete("/:id", deleteProductHandler);
  *       404:
  *         description: Product not found
  */
-router.delete("/:id/images", removeProductImageHandler);
+router.delete("/:id/images", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), removeProductImageHandler);
 export default router;

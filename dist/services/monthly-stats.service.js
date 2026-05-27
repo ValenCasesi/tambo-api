@@ -2,6 +2,14 @@ import prisma from "../prisma/client.js";
 // ==========================================
 // SYNC YEARLY PROJECTIONS HELPER
 // ==========================================
+async function checkOwnership(tamboId, actor) {
+    if (actor && actor.role === "PRODUCTOR") {
+        const tambo = await prisma.tambo.findUnique({ where: { id: tamboId }, select: { userId: true } });
+        if (!tambo || tambo.userId !== actor.id) {
+            throw { status: 403, message: "No puedes acceder a estadísticas de un tambo ajeno" };
+        }
+    }
+}
 async function syncYearlyProjections(tamboId, year) {
     // Traverse all months of this year for this tambo to calculate accumulatives
     const months = await prisma.monthlyStatistic.findMany({
@@ -104,13 +112,14 @@ async function syncYearlyProjections(tamboId, year) {
         });
     }
 }
-export async function upsertMonthlyStatistic(input) {
+export async function upsertMonthlyStatistic(input, actor) {
     const { tamboId, period,
     // ... inputs will be safely grabbed and coalesced
      } = input;
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo)
         throw { status: 404, message: "Tambo not found" };
+    await checkOwnership(tamboId, actor);
     const month = parseInt(period.substring(4, 6), 10);
     const year = parseInt(period.substring(0, 4), 10);
     const diasMes = new Date(year, month, 0).getDate();
@@ -301,10 +310,11 @@ export async function upsertMonthlyStatistic(input) {
     await syncYearlyProjections(tamboId, year);
     return result;
 }
-export async function getAnnualStatistics(tamboId, year) {
+export async function getAnnualStatistics(tamboId, year, actor) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo)
         throw { status: 404, message: "Tambo not found" };
+    await checkOwnership(tamboId, actor);
     const aggregates = await prisma.monthlyStatistic.aggregate({
         where: { tamboId, year },
         _sum: {
@@ -442,25 +452,29 @@ export async function getAnnualStatistics(tamboId, year) {
         }
     };
 }
-export async function getAllMonthlyStatistics() {
+export async function getAllMonthlyStatistics(actor) {
+    const where = actor && actor.role === "PRODUCTOR" ? { tambo: { userId: actor.id } } : {};
     return await prisma.monthlyStatistic.findMany({
+        where,
         orderBy: [{ year: 'desc' }, { month: 'desc' }],
         include: { tambo: { select: { id: true, name: true, location: true } } }
     });
 }
-export async function getMonthlyStatisticsByTambo(tamboId) {
+export async function getMonthlyStatisticsByTambo(tamboId, actor) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo)
         throw { status: 404, message: "Tambo not found" };
+    await checkOwnership(tamboId, actor);
     return await prisma.monthlyStatistic.findMany({
         where: { tamboId },
         orderBy: [{ year: 'desc' }, { month: 'desc' }]
     });
 }
-export async function updateMonthlyStatistic(id, data) {
+export async function updateMonthlyStatistic(id, data, actor) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Estadística mensual no encontrada" };
+    await checkOwnership(existing.tamboId, actor);
     const merged = { ...existing, ...data };
     const partosVaquillonas = Number(merged.partosVaquillonas);
     const partosVacas = Number(merged.partosVacas);
@@ -655,10 +669,11 @@ export async function updateMonthlyStatistic(id, data) {
     await syncYearlyProjections(existing.tamboId, year);
     return result;
 }
-export async function deleteMonthlyStatistic(id) {
+export async function deleteMonthlyStatistic(id, actor) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Estadística mensual no encontrada" };
+    await checkOwnership(existing.tamboId, actor);
     const result = await prisma.monthlyStatistic.delete({
         where: { id }
     });

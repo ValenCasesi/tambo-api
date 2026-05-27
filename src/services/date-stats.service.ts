@@ -9,6 +9,15 @@ export type DateStatisticInput = {
     vacasPreniadas: number;
 };
 
+async function checkOwnership(tamboId: string, actor?: { id: string; role: string }) {
+    if (actor && actor.role === "PRODUCTOR") {
+        const tambo = await prisma.tambo.findUnique({ where: { id: tamboId }, select: { userId: true } });
+        if (!tambo || tambo.userId !== actor.id) {
+            throw { status: 403, message: "No puedes acceder a estadísticas de un tambo ajeno" };
+        }
+    }
+}
+
 function calcular(vacasElegidas: number, vacasEnCelo: number, vacasPreniadas: number) {
     // % de celo de vacas = vacasEnCelo * 100 / vacasElegidas
     const porcentajeCelo = vacasElegidas > 0
@@ -28,11 +37,13 @@ function calcular(vacasElegidas: number, vacasEnCelo: number, vacasPreniadas: nu
     return { porcentajeCelo, porcentajePreniez, tasaPreniez };
 }
 
-export async function upsertDateStatistic(input: DateStatisticInput) {
+export async function upsertDateStatistic(input: DateStatisticInput, actor?: { id: string; role: string }) {
     const { tamboId, startDate, endDate, vacasElegidas, vacasEnCelo, vacasPreniadas } = input;
 
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo no encontrado" };
+
+    await checkOwnership(tamboId, actor);
 
     const year = new Date(startDate).getUTCFullYear();
     console.log(year)
@@ -66,9 +77,11 @@ export async function upsertDateStatistic(input: DateStatisticInput) {
     });
 }
 
-export async function getDateStatisticsByTambo(tamboId: string) {
+export async function getDateStatisticsByTambo(tamboId: string, actor?: { id: string; role: string }) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo no encontrado" };
+
+    await checkOwnership(tamboId, actor);
 
     return await prisma.dateStatistic.findMany({
         where: { tamboId },
@@ -76,15 +89,19 @@ export async function getDateStatisticsByTambo(tamboId: string) {
     });
 }
 
-export async function getDateStatisticById(id: string) {
+export async function getDateStatisticById(id: string, actor?: { id: string; role: string }) {
     const stat = await prisma.dateStatistic.findUnique({ where: { id } });
     if (!stat) throw { status: 404, message: "Estadística no encontrada" };
+
+    await checkOwnership(stat.tamboId, actor);
     return stat;
 }
 
-export async function getAnnualDateStatistics(tamboId: string, year: number) {
+export async function getAnnualDateStatistics(tamboId: string, year: number, actor?: { id: string; role: string }) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
     if (!tambo) throw { status: 404, message: "Tambo no encontrado" };
+
+    await checkOwnership(tamboId, actor);
 
     const aggregates = await prisma.dateStatistic.aggregate({
         where: { tamboId, year },
@@ -122,9 +139,11 @@ export async function getAnnualDateStatistics(tamboId: string, year: number) {
 
 export type DateStatisticUpdateInput = Partial<Pick<DateStatisticInput, "vacasElegidas" | "vacasEnCelo" | "vacasPreniadas">>;
 
-export async function updateDateStatistic(id: string, data: DateStatisticUpdateInput) {
+export async function updateDateStatistic(id: string, data: DateStatisticUpdateInput, actor?: { id: string; role: string }) {
     const existing = await prisma.dateStatistic.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "Estadística no encontrada" };
+
+    await checkOwnership(existing.tamboId, actor);
 
     // Merge existing values with incoming partial update
     const vacasElegidas = data.vacasElegidas !== undefined ? data.vacasElegidas : Number(existing.vacasElegidas);
@@ -146,9 +165,11 @@ export async function updateDateStatistic(id: string, data: DateStatisticUpdateI
     });
 }
 
-export async function deleteDateStatistic(id: string) {
+export async function deleteDateStatistic(id: string, actor?: { id: string; role: string }) {
     const existing = await prisma.dateStatistic.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "Estadística no encontrada" };
+
+    await checkOwnership(existing.tamboId, actor);
 
     return await prisma.dateStatistic.delete({ where: { id } });
 }

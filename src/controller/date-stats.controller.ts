@@ -43,7 +43,7 @@ function handleError(err: any, res: Response, context: string) {
 export async function upsertDateStatisticHandler(req: Request, res: Response) {
     try {
         const parsed = dateStatSchema.parse(req.body);
-        const result = await upsertDateStatistic(parsed);
+        const result = await upsertDateStatistic(parsed, req.user);
         return res.status(200).json(result);
     } catch (err: any) {
         return handleError(err, res, "upsertDateStatisticHandler");
@@ -53,7 +53,7 @@ export async function upsertDateStatisticHandler(req: Request, res: Response) {
 export async function getDateStatisticsByTamboHandler(req: Request, res: Response) {
     try {
         const tamboId = req.params.tamboId as string;
-        const stats = await getDateStatisticsByTambo(tamboId);
+        const stats = await getDateStatisticsByTambo(tamboId, req.user);
         return res.status(200).json(stats);
     } catch (err: any) {
         return handleError(err, res, "getDateStatisticsByTamboHandler");
@@ -63,7 +63,7 @@ export async function getDateStatisticsByTamboHandler(req: Request, res: Respons
 export async function getDateStatisticByIdHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const stat = await getDateStatisticById(id);
+        const stat = await getDateStatisticById(id, req.user);
         return res.status(200).json(stat);
     } catch (err: any) {
         return handleError(err, res, "getDateStatisticByIdHandler");
@@ -79,7 +79,7 @@ export async function getAnnualDateStatisticsHandler(req: Request, res: Response
             return res.status(400).json({ error: "Año inválido. Debe estar entre 2000 y 2100." });
         }
 
-        const data = await getAnnualDateStatistics(tamboId, year);
+        const data = await getAnnualDateStatistics(tamboId, year, req.user);
         return res.status(200).json(data);
     } catch (err: any) {
         return handleError(err, res, "getAnnualDateStatisticsHandler");
@@ -90,7 +90,7 @@ export async function updateDateStatisticHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
         const parsed = dateStatUpdateSchema.parse(req.body);
-        const result = await updateDateStatistic(id, parsed);
+        const result = await updateDateStatistic(id, parsed, req.user);
         return res.status(200).json(result);
     } catch (err: any) {
         return handleError(err, res, "updateDateStatisticHandler");
@@ -100,7 +100,7 @@ export async function updateDateStatisticHandler(req: Request, res: Response) {
 export async function deleteDateStatisticHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        await deleteDateStatistic(id);
+        await deleteDateStatistic(id, req.user);
         return res.status(200).json({ message: "Estadística eliminada exitosamente" });
     } catch (err: any) {
         return handleError(err, res, "deleteDateStatisticHandler");

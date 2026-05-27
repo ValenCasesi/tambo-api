@@ -35,8 +35,27 @@ export async function createTambo(data: TamboCreateInput) {
     return tambo;
 }
 
-export async function getAllTambos() {
-    return await prisma.tambo.findMany({
+export async function getAllTambos(
+    actor?: { id: string; role: string },
+    filters?: { cuenca?: Cuenca, size?: TamboSize, system?: TamboSystem },
+    pagination?: { page: number, limit: number }
+) {
+    let where: any = actor && actor.role === "PRODUCTOR" ? { userId: actor.id } : {};
+
+    if (filters) {
+        if (filters.cuenca) where.cuenca = filters.cuenca;
+        if (filters.size) where.size = filters.size;
+        if (filters.system) where.system = filters.system;
+    }
+
+    const limit = pagination?.limit ? Number(pagination.limit) : undefined;
+    const page = pagination?.page ? Number(pagination.page) : 1;
+    const skip = limit ? (page - 1) * limit : undefined;
+
+    const total = await prisma.tambo.count({ where });
+
+    const tambos = await prisma.tambo.findMany({
+        where,
         include: {
             user: {
                 select: {
@@ -47,8 +66,20 @@ export async function getAllTambos() {
                 }
             }
         },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit
     });
+
+    return {
+        data: tambos,
+        meta: {
+            total,
+            page,
+            limit: limit || total,
+            totalPages: limit ? Math.ceil(total / limit) : 1
+        }
+    };
 }
 
 export async function getTambosByUser(userId: string) {
@@ -69,7 +100,7 @@ export async function getTambosByUser(userId: string) {
 }
 export type TamboUpdateInput = Partial<Omit<TamboCreateInput, "userId">>;
 
-export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
+export async function updateTambo(tamboId: string, data: TamboUpdateInput, actor?: { id: string; role: string }) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
@@ -77,6 +108,10 @@ export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
 
     if (!existingTambo) {
         throw { status: 404, message: "Tambo no encontrado" };
+    }
+
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes modificar tambos que no te pertenecen" };
     }
 
     // Actualizar tambo
@@ -88,7 +123,7 @@ export async function updateTambo(tamboId: string, data: TamboUpdateInput) {
     return tambo;
 }
 
-export async function deleteTambo(tamboId: string) {
+export async function deleteTambo(tamboId: string, actor?: { id: string; role: string }) {
     // Verificar si el tambo existe
     const existingTambo = await prisma.tambo.findUnique({
         where: { id: tamboId }
@@ -98,10 +133,45 @@ export async function deleteTambo(tamboId: string) {
         throw { status: 404, message: "Tambo no encontrado" };
     }
 
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes eliminar tambos que no te pertenecen" };
+    }
+
     // Baja lógica
     const tambo = await prisma.tambo.update({
         where: { id: tamboId },
         data: { status: "DELETED" }
+    });
+
+    return tambo;
+}
+
+export async function hardDeleteTambo(tamboId: string, actor?: { id: string; role: string }) {
+    // Verificar si el tambo existe
+    const existingTambo = await prisma.tambo.findUnique({
+        where: { id: tamboId }
+    });
+
+    if (!existingTambo) {
+        throw { status: 404, message: "Tambo no encontrado" };
+    }
+
+    if (actor && actor.role === "PRODUCTOR" && existingTambo.userId !== actor.id) {
+        throw { status: 403, message: "No puedes eliminar tambos que no te pertenecen" };
+    }
+
+    // Borrar estadísticas asociadas (no hay cascade delete en schema)
+    await prisma.monthlyStatistic.deleteMany({
+        where: { tamboId }
+    });
+
+    await prisma.dateStatistic.deleteMany({
+        where: { tamboId }
+    });
+
+    // Borrado físico
+    const tambo = await prisma.tambo.delete({
+        where: { id: tamboId }
     });
 
     return tambo;

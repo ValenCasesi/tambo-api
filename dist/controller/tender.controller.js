@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTender, getTenders, getTenderById, updateTender, publishTender, awardTender, deleteTender, createRequest, getRequestsByTender, updateRequest, deleteRequest, createProposal, getProposals, getMyProposal, getAwardedInfo } from "../services/tender.service.js";
+import { createTender, getTenders, getTenderById, updateTender, publishTender, awardTender, deleteTender, createRequest, getRequestsByTender, updateRequest, deleteRequest, createProposal, getProposals, getMyProposal, getAwardedInfo, updateProposal } from "../services/tender.service.js";
 // ==========================================
 // ZOD SCHEMAS
 // ==========================================
@@ -192,6 +192,24 @@ export async function getProposalsHandler(req, res) {
     }
     catch (err) {
         return handleError(err, res, "getProposalsHandler");
+    }
+}
+const proposalUpdateSchema = z.object({
+    pricePerUnit: z.coerce.number().positive("El precio debe ser positivo").optional(),
+    paymentMethod: z.string().min(1, "La forma de pago es requerida").optional(),
+    logisticsConditions: z.string().min(1, "Las condiciones logísticas son requeridas").optional(),
+    offerValidity: z.string().min(1, "La vigencia de la oferta es requerida").optional()
+}).refine(data => Object.keys(data).length > 0, {
+    message: "Debe enviar al menos un campo para actualizar"
+});
+export async function updateProposalHandler(req, res) {
+    try {
+        const parsed = proposalUpdateSchema.parse(req.body);
+        const proposals = await updateProposal(req.params["id"], req.user.id, parsed);
+        return res.status(200).json(proposals);
+    }
+    catch (err) {
+        return handleError(err, res, "updateProposalHandler");
     }
 }
 export async function getMyProposalHandler(req, res) {

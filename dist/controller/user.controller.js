@@ -54,6 +54,13 @@ const updateUserSchema = z.object({
 export async function updateUserHandler(req, res) {
     try {
         const id = req.params.id;
+        if (req.user && req.user.role !== "ADMIN") {
+            if (id !== req.user.id) {
+                return res.status(403).json({ error: "No tienes permisos para modificar este perfil" });
+            }
+            delete req.body.role;
+            delete req.body.email;
+        }
         let imageUrl = undefined;
         if (req.file) {
             const b64 = Buffer.from(req.file.buffer).toString("base64");

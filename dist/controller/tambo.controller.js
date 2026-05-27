@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo } from "../services/tambo.service.js";
+import { createTambo, getAllTambos, getTambosByUser, updateTambo, deleteTambo, hardDeleteTambo } from "../services/tambo.service.js";
 const tamboSchema = z.object({
     userId: z.string().uuid("El userId debe ser un UUID válido"),
     name: z.string().min(1, "El nombre es requerido"),
@@ -22,6 +22,9 @@ export async function createTamboHandler(req, res) {
         // En un caso real con auth, el userId podría venir de req.user.id
         // Asumiendo que se pasa en el body por ahora:
         const parsed = tamboSchema.parse(req.body);
+        if (req.user && req.user.role === "PRODUCTOR") {
+            parsed.userId = req.user.id;
+        }
         const tambo = await createTambo(parsed);
         return res.status(201).json(tambo);
     }
@@ -38,8 +41,15 @@ export async function createTamboHandler(req, res) {
 }
 export async function getAllTambosHandler(req, res) {
     try {
-        const tambos = await getAllTambos();
-        return res.status(200).json(tambos);
+        const filters = {
+            cuenca: req.query.cuenca,
+            size: req.query.size,
+            system: req.query.system
+        };
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const result = await getAllTambos(req.user, filters, { page, limit });
+        return res.status(200).json(result);
     }
     catch (err) {
         console.error("getAllTambosHandler:", err);
@@ -49,6 +59,9 @@ export async function getAllTambosHandler(req, res) {
 export async function getTambosByUserHandler(req, res) {
     try {
         const userId = req.params.userId;
+        if (req.user && req.user.role === "PRODUCTOR" && req.user.id !== userId) {
+            return res.status(403).json({ error: "No puedes ver tambos de otros productores" });
+        }
         const tambos = await getTambosByUser(userId);
         return res.status(200).json(tambos);
     }
@@ -62,7 +75,7 @@ export async function updateTamboHandler(req, res) {
     try {
         const tamboId = req.params.id;
         const parsed = tamboUpdateSchema.parse(req.body);
-        const tambo = await updateTambo(tamboId, parsed);
+        const tambo = await updateTambo(tamboId, parsed, req.user);
         return res.status(200).json(tambo);
     }
     catch (err) {
@@ -79,7 +92,7 @@ export async function updateTamboHandler(req, res) {
 export async function deleteTamboHandler(req, res) {
     try {
         const tamboId = req.params.id;
-        await deleteTambo(tamboId);
+        await deleteTambo(tamboId, req.user);
         return res.status(200).json({ message: "Tambo eliminado exitosamente" });
     }
     catch (err) {
@@ -87,6 +100,20 @@ export async function deleteTamboHandler(req, res) {
             return res.status(err.status).json({ error: err.message });
         }
         console.error("deleteTamboHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function hardDeleteTamboHandler(req, res) {
+    try {
+        const tamboId = req.params.id;
+        await hardDeleteTambo(tamboId, req.user);
+        return res.status(200).json({ message: "Tambo eliminado físicamente exitosamente" });
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("hardDeleteTamboHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

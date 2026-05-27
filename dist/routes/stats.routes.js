@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { upsertMonthlyStatisticHandler, getAnnualStatisticsHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler } from "../controller/monthly-stats.controller.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
  * @openapi
@@ -277,7 +278,7 @@ const router = Router();
  *       404:
  *         description: Tambo not found
  */
-router.post("/", upsertMonthlyStatisticHandler);
+router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upsertMonthlyStatisticHandler);
 /**
  * @openapi
  * /api/stats/{tamboId}/annual/{year}:
@@ -306,7 +307,7 @@ router.post("/", upsertMonthlyStatisticHandler);
  *       404:
  *         description: Tambo not found
  */
-router.get("/:tamboId/annual/:year", getAnnualStatisticsHandler);
+router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
 /**
  * @openapi
  * /api/stats/monthly:
@@ -326,7 +327,7 @@ router.get("/:tamboId/annual/:year", getAnnualStatisticsHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/monthly", getAllMonthlyStatisticsHandler);
+router.get("/monthly", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAllMonthlyStatisticsHandler);
 /**
  * @openapi
  * /api/stats/{tamboId}/monthly:
@@ -355,7 +356,7 @@ router.get("/monthly", getAllMonthlyStatisticsHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
+router.get("/:tamboId/monthly", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getMonthlyStatisticsByTamboHandler);
 /**
  * @openapi
  * /api/stats/{id}:
@@ -457,7 +458,7 @@ router.get("/:tamboId/monthly", getMonthlyStatisticsByTamboHandler);
  *       500:
  *         description: Internal server error
  */
-router.put("/:id", updateMonthlyStatisticHandler);
+router.put("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), updateMonthlyStatisticHandler);
 /**
  * @openapi
  * /api/stats/{id}:
@@ -480,5 +481,5 @@ router.put("/:id", updateMonthlyStatisticHandler);
  *       500:
  *         description: Internal server error
  */
-router.delete("/:id", deleteMonthlyStatisticHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deleteMonthlyStatisticHandler);
 export default router;

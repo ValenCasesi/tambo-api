@@ -7,6 +7,7 @@ import {
     updateDateStatisticHandler,
     deleteDateStatisticHandler
 } from "../controller/date-stats.controller.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -75,7 +76,7 @@ const router = Router();
  *       500:
  *         description: Internal server error
  */
-router.post("/", upsertDateStatisticHandler);
+router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upsertDateStatisticHandler);
 
 /**
  * @openapi
@@ -99,7 +100,7 @@ router.post("/", upsertDateStatisticHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/tambo/:tamboId", getDateStatisticsByTamboHandler);
+router.get("/tambo/:tamboId", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getDateStatisticsByTamboHandler);
 
 /**
  * @openapi
@@ -133,7 +134,7 @@ router.get("/tambo/:tamboId", getDateStatisticsByTamboHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/tambo/:tamboId/annual/:year", getAnnualDateStatisticsHandler);
+router.get("/tambo/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualDateStatisticsHandler);
 
 /**
  * @openapi
@@ -157,7 +158,7 @@ router.get("/tambo/:tamboId/annual/:year", getAnnualDateStatisticsHandler);
  *       500:
  *         description: Internal server error
  */
-router.get("/:id", getDateStatisticByIdHandler);
+router.get("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getDateStatisticByIdHandler);
 
 /**
  * @openapi
@@ -196,7 +197,7 @@ router.get("/:id", getDateStatisticByIdHandler);
  *       500:
  *         description: Internal server error
  */
-router.put("/:id", updateDateStatisticHandler);
+router.put("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), updateDateStatisticHandler);
 
 /**
  * @openapi
@@ -220,6 +221,6 @@ router.put("/:id", updateDateStatisticHandler);
  *       500:
  *         description: Internal server error
  */
-router.delete("/:id", deleteDateStatisticHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deleteDateStatisticHandler);
 
 export default router;

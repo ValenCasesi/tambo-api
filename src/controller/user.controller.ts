@@ -61,6 +61,14 @@ export async function updateUserHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
 
+        if (req.user && req.user.role !== "ADMIN") {
+            if (id !== req.user.id) {
+                return res.status(403).json({ error: "No tienes permisos para modificar este perfil" });
+            }
+            delete req.body.role;
+            delete req.body.email;
+        }
+
         let imageUrl = undefined;
         if (req.file) {
             const b64 = Buffer.from(req.file.buffer).toString("base64");

@@ -19,14 +19,17 @@ async function syncAllTendersStatuses() {
         data: { status: TenderStatus.ACCEPTING_PROPOSALS }
     });
 
-    // 2. Move ACCEPTING_PROPOSALS -> CLOSED
-    await prisma.tender.updateMany({
+    // 2. Move ACCEPTING_PROPOSALS -> CLOSED / AWARDED
+    const expiringTenders = await prisma.tender.findMany({
         where: {
             status: TenderStatus.ACCEPTING_PROPOSALS,
             proposalDeadline: { lt: now }
-        },
-        data: { status: TenderStatus.CLOSED, closedAt: now }
+        }
     });
+
+    for (const tender of expiringTenders) {
+        await closeAndAwardTender(tender.id);
+    }
 }
 
 async function syncTenderStatus(tenderId: string) {
@@ -43,13 +46,109 @@ async function syncTenderStatus(tenderId: string) {
     }
 
     if (tender.status === TenderStatus.ACCEPTING_PROPOSALS && now > tender.proposalDeadline) {
-        return await prisma.tender.update({
-            where: { id: tenderId },
-            data: { status: TenderStatus.CLOSED, closedAt: now }
-        });
+        return await closeAndAwardTender(tenderId);
     }
 
     return tender;
+}
+
+async function closeAndAwardTender(tenderId: string) {
+    const tender = await prisma.tender.findUnique({
+        where: { id: tenderId },
+        include: {
+            proposals: {
+                orderBy: [
+                    { pricePerUnit: 'asc' },
+                    { submittedAt: 'asc' }
+                ],
+                include: { company: true }
+            },
+            requests: {
+                include: { producer: true }
+            }
+        }
+    });
+
+    if (!tender) throw { status: 404, message: "Licitación no encontrada" };
+
+    const now = new Date();
+
+    if (tender.proposals.length > 0) {
+        const winningProposal = tender.proposals[0];
+        
+        const updatedTender = await prisma.tender.update({
+            where: { id: tenderId },
+            data: {
+                status: TenderStatus.AWARDED,
+                winnerId: winningProposal.companyId,
+                closedAt: now,
+                awardedAt: now
+            }
+        });
+
+        const producers = tender.requests.map(r => r.producer);
+        const companies = tender.proposals.map(p => p.company);
+        
+        const participantsMap = new Map();
+        for (const user of [...producers, ...companies]) {
+            participantsMap.set(user.email, user);
+        }
+        
+        for (const user of participantsMap.values()) {
+            const subject = `¡Licitación Adjudicada! - ${tender.title}`;
+            const html = buildHtmlTemplate({
+                title: `Resultado de Licitación: ${tender.title}`,
+                messageLines: [
+                    `Hola ${user.firstName},`,
+                    `La licitación por <b>${tender.product}</b> ha finalizado y se ha seleccionado un ganador.`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `<b>Empresa Ganadora:</b> ${winningProposal.company.firstName} ${winningProposal.company.lastName}`,
+                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()}`,
+                    `Ingresa a la plataforma para ver más detalles y acceder a los datos de contacto.`
+                ],
+                buttonText: "Ver Resultado",
+                buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+            });
+
+            sendMail(user.email, subject, "Se ha adjudicado la licitación.", html)
+                .catch(err => console.error(`Error enviando email a ${user.email}:`, err));
+        }
+
+        return updatedTender;
+    } else {
+        const updatedTender = await prisma.tender.update({
+            where: { id: tenderId },
+            data: {
+                status: TenderStatus.CLOSED,
+                closedAt: now
+            }
+        });
+
+        const producersMap = new Map();
+        for (const req of tender.requests) {
+            producersMap.set(req.producer.email, req.producer);
+        }
+        
+        for (const user of producersMap.values()) {
+            const subject = `Licitación Cerrada Sin Ofertas - ${tender.title}`;
+            const html = buildHtmlTemplate({
+                title: `Licitación Sin Ofertas: ${tender.title}`,
+                messageLines: [
+                    `Hola ${user.firstName},`,
+                    `Te informamos que la licitación por <b>${tender.product}</b> ha finalizado su periodo de ofertas.`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `Lamentablemente, no se recibió ninguna propuesta por parte de las empresas proveedoras, por lo que la licitación ha sido cerrada.`
+                ],
+                buttonText: "Ir a la Plataforma",
+                buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+            });
+
+            sendMail(user.email, subject, "La licitación ha cerrado sin ofertas.", html)
+                .catch(err => console.error(`Error enviando email a ${user.email}:`, err));
+        }
+
+        return updatedTender;
+    }
 }
 
 function generateProposalCode(): string {
@@ -97,7 +196,7 @@ export async function getTenderById(id: string) {
     const full = await prisma.tender.findUnique({
         where: { id },
         include: {
-            winner: { select: { id: true, firstName: true, lastName: true, email: true } },
+            winner: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
             _count: { select: { requests: true, proposals: true } }
         }
     });
@@ -218,9 +317,16 @@ export async function createRequest(tenderId: string, producerId: string, quanti
     });
     if (existing) throw { status: 409, message: "Ya existe un pedido para esta licitación. Usá el endpoint de actualización." };
 
-    return await prisma.tenderRequest.create({
+    const request = await prisma.tenderRequest.create({
         data: { tenderId, producerId, quantity, notes }
     });
+
+    await prisma.tender.update({
+        where: { id: tenderId },
+        data: { totalPedidoTender: { increment: quantity } }
+    });
+
+    return request;
 }
 
 export async function getRequestsByTender(tenderId: string) {
@@ -243,10 +349,21 @@ export async function updateRequest(requestId: string, producerId: string, quant
         throw { status: 400, message: "La etapa de pedidos ya cerró, no se puede modificar" };
     }
 
-    return await prisma.tenderRequest.update({
+    const diff = quantity - Number(request.quantity);
+
+    const updated = await prisma.tenderRequest.update({
         where: { id: requestId },
         data: { quantity, notes }
     });
+
+    if (diff !== 0) {
+        await prisma.tender.update({
+            where: { id: tender.id },
+            data: { totalPedidoTender: { increment: diff } }
+        });
+    }
+
+    return updated;
 }
 
 export async function deleteRequest(requestId: string, producerId: string) {
@@ -259,7 +376,14 @@ export async function deleteRequest(requestId: string, producerId: string) {
         throw { status: 400, message: "La etapa de pedidos ya cerró, no se puede eliminar" };
     }
 
-    return await prisma.tenderRequest.delete({ where: { id: requestId } });
+    const deleted = await prisma.tenderRequest.delete({ where: { id: requestId } });
+
+    await prisma.tender.update({
+        where: { id: tender.id },
+        data: { totalPedidoTender: { decrement: Number(request.quantity) } }
+    });
+
+    return deleted;
 }
 
 // ==========================================
@@ -285,6 +409,9 @@ export async function createProposal(tenderId: string, data: ProposalInput) {
     }
 
     const now = new Date();
+    if (now < tender.proposalStartDate) {
+        throw { status: 400, message: "La etapa de carga de ofertas aún no comenzó" };
+    }
     if (now > tender.proposalDeadline) {
         throw { status: 400, message: "El plazo de carga de ofertas ya venció" };
     }
@@ -296,7 +423,7 @@ export async function createProposal(tenderId: string, data: ProposalInput) {
     const existing = await prisma.tenderProposal.findUnique({
         where: { tenderId_companyId: { tenderId, companyId: data.companyId } }
     });
-    if (existing) throw { status: 409, message: "Ya enviaste una oferta para esta licitación. Las ofertas no se pueden modificar una vez enviadas." };
+    if (existing) throw { status: 409, message: "Ya enviaste una oferta para esta licitación." };
 
     const proposalCode = generateProposalCode();
 
@@ -315,6 +442,45 @@ export async function createProposal(tenderId: string, data: ProposalInput) {
     });
 }
 
+export type ProposalUpdateInput = {
+    pricePerUnit?: number;
+    paymentMethod?: string;
+    logisticsConditions?: string;
+    offerValidity?: string;
+};
+
+export async function updateProposal(tenderId: string, companyId: string, data: ProposalUpdateInput) {
+    const tender = await syncTenderStatus(tenderId);
+
+    if (tender.status !== TenderStatus.ACCEPTING_PROPOSALS) {
+        if (tender.status === TenderStatus.ACCEPTING_REQUESTS) {
+            throw { status: 400, message: "La etapa de pedidos aún está abierta. Las ofertas se aceptan después del corte de pedidos." };
+        }
+        throw { status: 400, message: "La licitación no está en la etapa de carga de ofertas" };
+    }
+
+    const now = new Date();
+    if (now < tender.proposalStartDate) {
+        throw { status: 400, message: "La etapa de carga de ofertas aún no comenzó" };
+    }
+    if (now > tender.proposalDeadline) {
+        throw { status: 400, message: "El plazo de carga de ofertas ya venció" };
+    }
+
+    const existing = await prisma.tenderProposal.findUnique({
+        where: { tenderId_companyId: { tenderId, companyId } }
+    });
+    if (!existing) throw { status: 404, message: "No encontramos una oferta tuya para esta licitación" };
+
+    return await prisma.tenderProposal.update({
+        where: { tenderId_companyId: { tenderId, companyId } },
+        data: {
+            ...data,
+            submittedAt: now
+        }
+    });
+}
+
 export async function getProposals(tenderId: string) {
     const tender = await syncTenderStatus(tenderId);
 
@@ -327,7 +493,7 @@ export async function getProposals(tenderId: string) {
         include: {
             company: { select: { id: true, firstName: true, lastName: true } }
         },
-        orderBy: { pricePerUnit: "asc" } // Ranking por precio ascendente
+        orderBy: { pricePerUnit: "asc" }
     });
 }
 

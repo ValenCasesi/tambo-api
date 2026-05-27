@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler, reactivateUserHandler } from "../controller/user.controller.js";
 import { upload } from "../middlewares/upload.middleware.js";
+import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -61,7 +62,7 @@ const router = Router();
  *            items:
  *             $ref: '#/components/schemas/UserResponse'
  */
-router.get("/", getAllUsersHandler);
+router.get("/", requireAuth, requireRole(["ADMIN"]), getAllUsersHandler);
 
 /**
  * @openapi
@@ -74,7 +75,7 @@ router.get("/", getAllUsersHandler);
  *       200:
  *         description: Success
  */
-router.get("/pending", getPendingUsersHandler);
+router.get("/pending", requireAuth, requireRole(["ADMIN"]), getPendingUsersHandler);
 
 /**
  * @openapi
@@ -94,7 +95,7 @@ router.get("/pending", getPendingUsersHandler);
  *       400:
  *         description: Not in PENDING status
  */
-router.put("/:id/approve", approveUserHandler);
+router.put("/:id/approve", requireAuth, requireRole(["ADMIN"]), approveUserHandler);
 
 /**
  * @openapi
@@ -114,7 +115,7 @@ router.put("/:id/approve", approveUserHandler);
  *       400:
  *         description: Not in PENDING status
  */
-router.put("/:id/reject", rejectUserHandler);
+router.put("/:id/reject", requireAuth, requireRole(["ADMIN"]), rejectUserHandler);
 
 /**
  * @openapi
@@ -201,7 +202,7 @@ router.post("/", upload.single("image"), createUserHandler);
  *       404:
  *         description: User not found
  */
-router.put("/:id", upload.single("image"), updateUserHandler);
+router.put("/:id", requireAuth, upload.single("image"), updateUserHandler);
 
 /**
  * @openapi
@@ -225,7 +226,7 @@ router.put("/:id", upload.single("image"), updateUserHandler);
  *       404:
  *         description: User not found
  */
-router.delete("/:id", deleteUserHandler);
+router.delete("/:id", requireAuth, requireRole(["ADMIN"]), deleteUserHandler);
 
 /**
  * @openapi
@@ -249,6 +250,6 @@ router.delete("/:id", deleteUserHandler);
  *       404:
  *         description: User not found
  */
-router.put("/:id/reactivate", reactivateUserHandler);
+router.put("/:id/reactivate", requireAuth, requireRole(["ADMIN"]), reactivateUserHandler);
 
 export default router;

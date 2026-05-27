@@ -51,11 +51,14 @@ export async function getAllProducts() {
     });
     return products;
 }
-export async function updateProduct(input) {
+export async function updateProduct(input, actor) {
     const { id, images, ...rest } = input;
     const existing = await prisma.marketplaceProduct.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Product not found" };
+    if (actor && actor.role === "PRODUCTOR" && existing.producerId !== actor.id) {
+        throw { status: 403, message: "No puedes modificar productos de otros productores" };
+    }
     // If new images arrive, concatenate them to the current ones. We typecast as an array of strings since Prisma assumes Json.
     const currentImages = Array.isArray(existing.images) ? existing.images : [];
     if (images && currentImages.length + images.length > 3) {
@@ -71,22 +74,28 @@ export async function updateProduct(input) {
     });
     return updated;
 }
-export async function deleteProduct(id) {
+export async function deleteProduct(id, actor) {
     const existing = await prisma.marketplaceProduct.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Product not found" };
     if (existing.status === "DELETED")
         throw { status: 400, message: "Product is already deleted" };
+    if (actor && actor.role === "PRODUCTOR" && existing.producerId !== actor.id) {
+        throw { status: 403, message: "No puedes eliminar productos de otros productores" };
+    }
     const deleted = await prisma.marketplaceProduct.update({
         where: { id },
         data: { status: "DELETED" }
     });
     return deleted;
 }
-export async function removeProductImage(id, imageUrl) {
+export async function removeProductImage(id, imageUrl, actor) {
     const existing = await prisma.marketplaceProduct.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Product not found" };
+    if (actor && actor.role === "PRODUCTOR" && existing.producerId !== actor.id) {
+        throw { status: 403, message: "No puedes modificar productos de otros productores" };
+    }
     const currentImages = Array.isArray(existing.images) ? existing.images : [];
     // Check if the image exists in the product
     if (!currentImages.includes(imageUrl)) {
