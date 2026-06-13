@@ -7,13 +7,14 @@ type CreateProductInput = {
     description: string;
     category: string;
     price: number;
+    priceCurrency: "ARS" | "USD";
     unit: string;
     location: string;
     images: string[];
 };
 
 export async function createProduct(input: CreateProductInput) {
-    const { producerId, name, description, category, price, unit, location, images } = input;
+    const { producerId, name, description, category, price, priceCurrency, unit, location, images } = input;
 
     if (images && images.length > 3) {
         throw { status: 400, message: "Un producto puede tener un máximo de 3 imágenes" };
@@ -30,10 +31,11 @@ export async function createProduct(input: CreateProductInput) {
             description,
             category,
             price,
+            priceCurrency,
             unit,
             location,
             images, // Array of URLs stored as JSON
-        },
+        } as any,
     });
 
     return product;
@@ -76,6 +78,7 @@ type UpdateProductInput = {
     description?: string;
     category?: string;
     price?: number;
+    priceCurrency?: "ARS" | "USD";
     unit?: string;
     location?: string;
     images?: string[];
@@ -106,7 +109,7 @@ export async function updateProduct(input: UpdateProductInput, actor?: { id: str
         data: {
             ...rest,
             images: updatedImages,
-        },
+        } as any,
     });
 
     return updated;
@@ -158,5 +161,4 @@ export async function removeProductImage(id: string, imageUrl: string, actor?: {
 
     return updated;
 }
-
 

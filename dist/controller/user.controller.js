@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser } from "../services/user.service.js";
+import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 const createUserSchema = z.object({
     firstName: z.string().min(1),
@@ -93,6 +93,20 @@ export async function getAllUsersHandler(req, res) {
     }
     catch (err) {
         console.error("getAllUsersHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function getUserTambosHandler(req, res) {
+    try {
+        const id = req.params.id;
+        const tambos = await getUserTambos(id);
+        return res.status(200).json(tambos);
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("getUserTambosHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

@@ -1,7 +1,7 @@
 import prisma from "../prisma/client.js";
 import { deleteImage } from "./cloudinary.service.js";
 export async function createProduct(input) {
-    const { producerId, name, description, category, price, unit, location, images } = input;
+    const { producerId, name, description, category, price, priceCurrency, unit, location, images } = input;
     if (images && images.length > 3) {
         throw { status: 400, message: "Un producto puede tener un máximo de 3 imágenes" };
     }
@@ -16,6 +16,7 @@ export async function createProduct(input) {
             description,
             category,
             price,
+            priceCurrency,
             unit,
             location,
             images, // Array of URLs stored as JSON

@@ -87,7 +87,7 @@ async function closeAndAwardTender(tenderId) {
                     `La licitación por <b>${tender.product}</b> ha finalizado y se ha seleccionado un ganador.`,
                     `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()} ${getTenderVolumeUnit(tender)}`,
                     `<b>Empresa Ganadora:</b> ${winningProposal.company.firstName} ${winningProposal.company.lastName}`,
-                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()} / ${getTenderVolumeUnit(tender)}`,
+                    `<b>Precio Unitario:</b> ${getTenderPriceCurrencyLabel(tender)} ${winningProposal.pricePerUnit.toString()} / ${getTenderVolumeUnit(tender)}`,
                     `Ingresa a la plataforma para ver más detalles y acceder a los datos de contacto.`
                 ],
                 buttonText: "Ver Resultado",
@@ -136,6 +136,9 @@ function generateProposalCode() {
 }
 function getTenderVolumeUnit(tender) {
     return tender.volumeUnit || "unidades";
+}
+function getTenderPriceCurrencyLabel(tender) {
+    return tender.priceCurrency === "USD_BN" ? "USD BN" : "$";
 }
 export async function createTender(data) {
     return await prisma.tender.create({ data });
@@ -207,6 +210,7 @@ export async function publishTender(id) {
                 `Se ha publicado una nueva licitación en Sinergia Plataforma.`,
                 `<b>Producto:</b> ${tender.product}`,
                 `<b>Unidad:</b> ${getTenderVolumeUnit(tender)}`,
+                `<b>Moneda de cotización:</b> ${getTenderPriceCurrencyLabel(tender)}`,
                 `<b>Especificaciones:</b> ${tender.specifications}`,
                 `<b>Apertura de pedidos (Productores):</b> ${tender.requestStartDate.toLocaleDateString('es-AR')}`,
                 `<b>Cierre de pedidos (Productores):</b> ${tender.requestDeadline.toLocaleDateString('es-AR')}`,

@@ -103,12 +103,36 @@ export async function getAllUsers(statusFilter) {
         whereClause.status = { not: "PENDING" }; // Default
     }
     const users = await prisma.user.findMany({
-        where: whereClause
+        where: whereClause,
+        include: {
+            _count: {
+                select: { tambos: true }
+            }
+        }
     });
     return users.map((u) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _pwd, ...safe } = u;
         return safe;
+    });
+}
+export async function getUserTambos(userId) {
+    const existing = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+    });
+    if (!existing)
+        throw { status: 404, message: "User not found" };
+    return await prisma.tambo.findMany({
+        where: { userId },
+        select: {
+            id: true,
+            name: true,
+            location: true,
+            province: true,
+            cuenca: true
+        },
+        orderBy: { createdAt: "desc" }
     });
 }
 export async function getPendingUsers() {
