@@ -293,6 +293,7 @@ model Tender {
   id                 String       @id @default(uuid())
   title              String // Nombre descriptivo
   product            String // Ej: "Núcleo Mineral"
+  volumeUnit         String       @default("unidades") // Unidad para pedidos y cotizaciones
   specifications     String       @db.Text // Especificaciones técnicas
   deliveryConditions String       @db.Text
   paymentOptions     Json // Array de strings: ["contado","30 días"]

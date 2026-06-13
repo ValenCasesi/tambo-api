@@ -101,9 +101,9 @@ async function closeAndAwardTender(tenderId: string) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `La licitación por <b>${tender.product}</b> ha finalizado y se ha seleccionado un ganador.`,
-                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()} ${getTenderVolumeUnit(tender)}`,
                     `<b>Empresa Ganadora:</b> ${winningProposal.company.firstName} ${winningProposal.company.lastName}`,
-                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()}`,
+                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()} / ${getTenderVolumeUnit(tender)}`,
                     `Ingresa a la plataforma para ver más detalles y acceder a los datos de contacto.`
                 ],
                 buttonText: "Ver Resultado",
@@ -136,7 +136,7 @@ async function closeAndAwardTender(tenderId: string) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `Te informamos que la licitación por <b>${tender.product}</b> ha finalizado su periodo de ofertas.`,
-                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()} ${getTenderVolumeUnit(tender)}`,
                     `Lamentablemente, no se recibió ninguna propuesta por parte de las empresas proveedoras, por lo que la licitación ha sido cerrada.`
                 ],
                 buttonText: "Ir a la Plataforma",
@@ -157,6 +157,10 @@ function generateProposalCode(): string {
     return `PROP-${year}-${random}`;
 }
 
+function getTenderVolumeUnit(tender: unknown) {
+    return (tender as { volumeUnit?: string }).volumeUnit || "unidades";
+}
+
 // ==========================================
 // TENDER CRUD
 // ==========================================
@@ -164,6 +168,7 @@ function generateProposalCode(): string {
 export type TenderInput = {
     title: string;
     product: string;
+    volumeUnit: string;
     specifications: string;
     deliveryConditions: string;
     paymentOptions: string[];
@@ -247,6 +252,7 @@ export async function publishTender(id: string) {
                 `Hola ${user.firstName},`,
                 `Se ha publicado una nueva licitación en Sinergia Plataforma.`,
                 `<b>Producto:</b> ${tender.product}`,
+                `<b>Unidad:</b> ${getTenderVolumeUnit(tender)}`,
                 `<b>Especificaciones:</b> ${tender.specifications}`,
                 `<b>Apertura de pedidos (Productores):</b> ${tender.requestStartDate.toLocaleDateString('es-AR')}`,
                 `<b>Cierre de pedidos (Productores):</b> ${tender.requestDeadline.toLocaleDateString('es-AR')}`,

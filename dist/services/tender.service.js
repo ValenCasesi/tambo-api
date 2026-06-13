@@ -85,9 +85,9 @@ async function closeAndAwardTender(tenderId) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `La licitación por <b>${tender.product}</b> ha finalizado y se ha seleccionado un ganador.`,
-                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()} ${getTenderVolumeUnit(tender)}`,
                     `<b>Empresa Ganadora:</b> ${winningProposal.company.firstName} ${winningProposal.company.lastName}`,
-                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()}`,
+                    `<b>Precio Unitario:</b> $${winningProposal.pricePerUnit.toString()} / ${getTenderVolumeUnit(tender)}`,
                     `Ingresa a la plataforma para ver más detalles y acceder a los datos de contacto.`
                 ],
                 buttonText: "Ver Resultado",
@@ -117,7 +117,7 @@ async function closeAndAwardTender(tenderId) {
                 messageLines: [
                     `Hola ${user.firstName},`,
                     `Te informamos que la licitación por <b>${tender.product}</b> ha finalizado su periodo de ofertas.`,
-                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()}`,
+                    `<b>Total Solicitado por Productores:</b> ${tender.totalPedidoTender.toString()} ${getTenderVolumeUnit(tender)}`,
                     `Lamentablemente, no se recibió ninguna propuesta por parte de las empresas proveedoras, por lo que la licitación ha sido cerrada.`
                 ],
                 buttonText: "Ir a la Plataforma",
@@ -133,6 +133,9 @@ function generateProposalCode() {
     const year = new Date().getUTCFullYear();
     const random = randomBytes(3).toString("hex").toUpperCase();
     return `PROP-${year}-${random}`;
+}
+function getTenderVolumeUnit(tender) {
+    return tender.volumeUnit || "unidades";
 }
 export async function createTender(data) {
     return await prisma.tender.create({ data });
@@ -203,6 +206,7 @@ export async function publishTender(id) {
                 `Hola ${user.firstName},`,
                 `Se ha publicado una nueva licitación en Sinergia Plataforma.`,
                 `<b>Producto:</b> ${tender.product}`,
+                `<b>Unidad:</b> ${getTenderVolumeUnit(tender)}`,
                 `<b>Especificaciones:</b> ${tender.specifications}`,
                 `<b>Apertura de pedidos (Productores):</b> ${tender.requestStartDate.toLocaleDateString('es-AR')}`,
                 `<b>Cierre de pedidos (Productores):</b> ${tender.requestDeadline.toLocaleDateString('es-AR')}`,
