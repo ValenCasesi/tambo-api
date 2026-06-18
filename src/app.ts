@@ -30,7 +30,7 @@ app.use("/api/tenders", tenderRoutes);
 
 app.get("/", (_req, res) => res.send("tampo-api OK"));
 
-// Initialize swagger docs
+// Initialize swagger docss
 swaggerDocs(app);
 
 if (process.env.NODE_ENV !== "production") {
