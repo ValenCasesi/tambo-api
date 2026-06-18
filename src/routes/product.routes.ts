@@ -39,6 +39,9 @@ const router = Router();
  *          type: string
  *        price:
  *          type: number
+ *        priceCurrency:
+ *          type: string
+ *          enum: [ARS, USD]
  *        unit:
  *          type: string
  *        images:
@@ -105,6 +108,9 @@ router.get("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAllProducts
  *              type: string
  *            price:
  *              type: number
+ *            priceCurrency:
+ *              type: string
+ *              enum: [ARS, USD]
  *            unit:
  *              type: string
  *            location:
@@ -158,6 +164,9 @@ router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upload.array(
  *              type: string
  *            price:
  *              type: number
+ *            priceCurrency:
+ *              type: string
+ *              enum: [ARS, USD]
  *            unit:
  *              type: string
  *            location:
@@ -237,4 +246,3 @@ router.delete("/:id", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), deletePr
 router.delete("/:id/images", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), removeProductImageHandler);
 
 export default router;
-

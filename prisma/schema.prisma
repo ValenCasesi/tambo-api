@@ -269,6 +269,7 @@ model MarketplaceProduct {
   description String       @db.Text
   category    String
   price       Decimal      @db.Decimal(10, 2)
+  priceCurrency String     @default("ARS")
   unit        String
   images      Json // Array de URLs
   location    String
@@ -293,6 +294,8 @@ model Tender {
   id                 String       @id @default(uuid())
   title              String // Nombre descriptivo
   product            String // Ej: "Núcleo Mineral"
+  volumeUnit         String       @default("unidades") // Unidad para pedidos y cotizaciones
+  priceCurrency      String       @default("ARS") // ARS ($) o USD_BN (USD Banco Nación)
   specifications     String       @db.Text // Especificaciones técnicas
   deliveryConditions String       @db.Text
   paymentOptions     Json // Array de strings: ["contado","30 días"]

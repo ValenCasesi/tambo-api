@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser } from "../services/user.service.js";
+import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 
 const createUserSchema = z.object({
@@ -106,6 +106,20 @@ export async function getAllUsersHandler(req: Request, res: Response) {
     }
 }
 
+export async function getUserTambosHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const tambos = await getUserTambos(id);
+        return res.status(200).json(tambos);
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        console.error("getUserTambosHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
 export async function getPendingUsersHandler(req: Request, res: Response) {
     try {
         const users = await getPendingUsers();
@@ -171,4 +185,3 @@ export async function reactivateUserHandler(req: Request, res: Response) {
         return res.status(500).json({ error: "Internal server error" });
     }
 }
-

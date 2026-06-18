@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler, reactivateUserHandler } from "../controller/user.controller.js";
+import { createUserHandler, updateUserHandler, getAllUsersHandler, deleteUserHandler, getPendingUsersHandler, approveUserHandler, rejectUserHandler, reactivateUserHandler, getUserTambosHandler } from "../controller/user.controller.js";
 import { upload } from "../middlewares/upload.middleware.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
@@ -72,6 +72,7 @@ router.get("/", requireAuth, requireRole(["ADMIN"]), getAllUsersHandler);
  *         description: Success
  */
 router.get("/pending", requireAuth, requireRole(["ADMIN"]), getPendingUsersHandler);
+router.get("/:id/tambos", requireAuth, requireRole(["ADMIN"]), getUserTambosHandler);
 /**
  * @openapi
  * /api/users/{id}/approve:

@@ -15,6 +15,8 @@ import { TenderStatus } from "@prisma/client";
 const tenderSchema = z.object({
     title: z.string().min(1, "El título es requerido"),
     product: z.string().min(1, "El producto es requerido"),
+    volumeUnit: z.string().min(1, "La unidad es requerida").default("unidades"),
+    priceCurrency: z.enum(["ARS", "USD_BN"]).default("ARS"),
     specifications: z.string().min(1, "Las especificaciones son requeridas"),
     deliveryConditions: z.string().min(1, "Las condiciones de entrega son requeridas"),
     paymentOptions: z.array(z.string()).min(1, "Debe haber al menos una opción de pago"),
@@ -33,6 +35,8 @@ const tenderSchema = z.object({
 const tenderUpdateSchema = z.object({
     title: z.string().min(1).optional(),
     product: z.string().min(1).optional(),
+    volumeUnit: z.string().min(1).optional(),
+    priceCurrency: z.enum(["ARS", "USD_BN"]).optional(),
     specifications: z.string().min(1).optional(),
     deliveryConditions: z.string().min(1).optional(),
     paymentOptions: z.array(z.string()).min(1).optional(),

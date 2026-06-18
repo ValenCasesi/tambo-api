@@ -7,6 +7,7 @@ const createProductSchema = z.object({
     description: z.string().min(1),
     category: z.string().min(1),
     price: z.coerce.number().positive(),
+    priceCurrency: z.enum(["ARS", "USD"]).default("ARS"),
     unit: z.string().min(1),
     location: z.string().min(1),
 });
@@ -56,6 +57,7 @@ const updateProductSchema = z.object({
     description: z.string().min(1).optional(),
     category: z.string().min(1).optional(),
     price: z.coerce.number().positive().optional(),
+    priceCurrency: z.enum(["ARS", "USD"]).optional(),
     unit: z.string().min(1).optional(),
     location: z.string().min(1).optional(),
     isAvailable: z.coerce.boolean().optional(),

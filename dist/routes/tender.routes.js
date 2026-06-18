@@ -8,7 +8,7 @@ const router = Router();
  *  schemas:
  *    TenderInput:
  *      type: object
- *      required: [title, product, specifications, deliveryConditions, paymentOptions, requestStartDate, requestDeadline, proposalStartDate, proposalDeadline]
+ *      required: [title, product, volumeUnit, priceCurrency, specifications, deliveryConditions, paymentOptions, requestStartDate, requestDeadline, proposalStartDate, proposalDeadline]
  *      properties:
  *        title:
  *          type: string
@@ -16,6 +16,13 @@ const router = Router();
  *        product:
  *          type: string
  *          example: "Núcleo Mineral"
+ *        volumeUnit:
+ *          type: string
+ *          example: "kilos"
+ *        priceCurrency:
+ *          type: string
+ *          enum: [ARS, USD_BN]
+ *          example: "USD_BN"
  *        specifications:
  *          type: string
  *          example: "Proteína mínima 30%, humedad máxima 12%"
