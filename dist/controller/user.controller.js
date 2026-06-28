@@ -90,8 +90,11 @@ export async function updateUserHandler(req, res) {
 }
 export async function getAllUsersHandler(req, res) {
     try {
-        const status = req.query.status;
-        const users = await getAllUsers(status);
+        const users = await getAllUsers({
+            status: req.query.status,
+            search: req.query.search,
+            localidad: req.query.localidad
+        });
         return res.status(200).json(users);
     }
     catch (err) {

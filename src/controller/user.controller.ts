@@ -104,8 +104,11 @@ export async function updateUserHandler(req: Request, res: Response) {
 
 export async function getAllUsersHandler(req: Request, res: Response) {
     try {
-        const status = req.query.status as string;
-        const users = await getAllUsers(status);
+        const users = await getAllUsers({
+            status: req.query.status as string | undefined,
+            search: req.query.search as string | undefined,
+            localidad: req.query.localidad as string | undefined
+        });
         return res.status(200).json(users);
     } catch (err: any) {
         console.error("getAllUsersHandler:", err);

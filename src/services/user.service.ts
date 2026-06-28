@@ -17,6 +17,85 @@ type CreateUserInput = {
     billingPlanId?: string | null;
 };
 
+type UserFilters = {
+    status?: string;
+    search?: string;
+    localidad?: string;
+};
+
+const normalizeSearchText = (value?: string | null) =>
+    (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+const splitSearchTokens = (value?: string | null) =>
+    normalizeSearchText(value).split(/\s+/).filter(Boolean);
+
+const getFuzzyThreshold = (length: number) => {
+    if (length <= 2) return 0;
+    if (length <= 5) return 1;
+    if (length <= 8) return 2;
+    return Math.ceil(length * 0.25);
+};
+
+const getLevenshteinDistance = (a: string, b: string) => {
+    const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+    const current = Array.from({ length: b.length + 1 }, () => 0);
+
+    for (let i = 1; i <= a.length; i += 1) {
+        current[0] = i;
+
+        for (let j = 1; j <= b.length; j += 1) {
+            const substitutionCost = a[i - 1] === b[j - 1] ? 0 : 1;
+            current[j] = Math.min(
+                current[j - 1] + 1,
+                previous[j] + 1,
+                previous[j - 1] + substitutionCost
+            );
+        }
+
+        for (let j = 0; j <= b.length; j += 1) {
+            previous[j] = current[j];
+        }
+    }
+
+    return previous[b.length];
+};
+
+const scoreTokenMatch = (value: string, query: string) => {
+    if (value === query) return 0;
+    if (value.startsWith(query)) return 1;
+    if (value.includes(query)) return 2;
+
+    const distance = getLevenshteinDistance(value, query);
+    return distance <= getFuzzyThreshold(query.length) ? 3 + distance : Number.POSITIVE_INFINITY;
+};
+
+const scoreSearchMatch = (value: string, query: string) => {
+    if (!query) return 0;
+    if (value === query) return 0;
+    if (value.startsWith(query)) return 1;
+    if (value.includes(query)) return 2;
+
+    const valueTokens = splitSearchTokens(value);
+    const queryTokens = splitSearchTokens(query);
+
+    if (!valueTokens.length || !queryTokens.length) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    let totalScore = 0;
+    for (const queryToken of queryTokens) {
+        const tokenScore = Math.min(...valueTokens.map((valueToken) => scoreTokenMatch(valueToken, queryToken)));
+        if (!Number.isFinite(tokenScore)) return Number.POSITIVE_INFINITY;
+        totalScore += tokenScore;
+    }
+
+    return 3 + totalScore / queryTokens.length;
+};
+
 export async function createUser(input: CreateUserInput) {
     const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId } = input;
 
@@ -153,7 +232,8 @@ export async function updateUser(input: UpdateUserInput) {
     return safe;
 }
 
-export async function getAllUsers(statusFilter?: string) {
+export async function getAllUsers(filters: UserFilters = {}) {
+    const { status: statusFilter, search, localidad } = filters;
     const whereClause: any = {};
     
     if (statusFilter) {
@@ -169,10 +249,42 @@ export async function getAllUsers(statusFilter?: string) {
             _count: {
                 select: { tambos: true }
             }
-        }
+        },
+        orderBy: { createdAt: "desc" }
     });
 
-    return users.map((u) => {
+    const normalizedSearch = normalizeSearchText(search);
+    const normalizedLocalidad = normalizeSearchText(localidad);
+
+    const filteredUsers = users
+        .map((u) => {
+            const searchableText = normalizeSearchText([
+                u.firstName,
+                u.lastName,
+                u.email,
+                u.cuit
+            ].filter(Boolean).join(" "));
+            const localidadText = normalizeSearchText(u.localidad);
+
+            return {
+                user: u,
+                searchScore: scoreSearchMatch(searchableText, normalizedSearch),
+                localidadScore: scoreSearchMatch(localidadText, normalizedLocalidad)
+            };
+        })
+        .filter(({ searchScore, localidadScore }) => Number.isFinite(searchScore) && Number.isFinite(localidadScore))
+        .sort((a, b) => {
+            if (!normalizedSearch && !normalizedLocalidad) {
+                return b.user.createdAt.getTime() - a.user.createdAt.getTime();
+            }
+
+            return a.searchScore - b.searchScore
+                || a.localidadScore - b.localidadScore
+                || b.user.createdAt.getTime() - a.user.createdAt.getTime();
+        })
+        .map(({ user }) => user);
+
+    return filteredUsers.map((u) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _pwd, ...safe } = u;
         return safe;
