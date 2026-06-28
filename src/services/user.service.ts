@@ -14,10 +14,11 @@ type CreateUserInput = {
     razonSocial?: string | null;
     localidad?: string | null;
     imageUrl?: string | null;
+    billingPlanId?: string | null;
 };
 
 export async function createUser(input: CreateUserInput) {
-    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl } = input;
+    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId } = input;
 
     // check email uniqueness
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -30,6 +31,7 @@ export async function createUser(input: CreateUserInput) {
     }
 
     const hashed = await hashPassword(password);
+    const safeBillingPlanId = await validateBillingPlanForUser(role as Role, billingPlanId);
 
     // Asignar PENDING por defecto a Productores o Empresas
     const isPending = role === "PRODUCTOR" || role === "EMPRESA";
@@ -46,6 +48,7 @@ export async function createUser(input: CreateUserInput) {
             razonSocial,
             localidad,
             imageUrl,
+            billingPlanId: safeBillingPlanId,
             status: isPending ? "PENDING" : "ACTIVE"
         },
     });
@@ -93,10 +96,11 @@ type UpdateUserInput = {
     razonSocial?: string | null;
     localidad?: string | null;
     imageUrl?: string | null;
+    billingPlanId?: string | null;
 };
 
 export async function updateUser(input: UpdateUserInput) {
-    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId } = input;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
@@ -116,6 +120,13 @@ export async function updateUser(input: UpdateUserInput) {
         hashed = await hashPassword(password);
     }
 
+    const nextRole = (role || existing.role) as Role;
+    const billingPlanUpdate = billingPlanId !== undefined
+        ? { billingPlanId: await validateBillingPlanForUser(nextRole, billingPlanId) }
+        : role && role !== existing.role
+            ? { billingPlanId: null }
+            : {};
+
     const updated = await prisma.user.update({
         where: { id },
         data: {
@@ -129,7 +140,11 @@ export async function updateUser(input: UpdateUserInput) {
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
+            ...billingPlanUpdate,
         },
+        include: {
+            billingPlan: true
+        }
     });
 
     // remove password from returned object
@@ -150,6 +165,7 @@ export async function getAllUsers(statusFilter?: string) {
     const users = await prisma.user.findMany({
         where: whereClause,
         include: {
+            billingPlan: true,
             _count: {
                 select: { tambos: true }
             }
@@ -161,6 +177,17 @@ export async function getAllUsers(statusFilter?: string) {
         const { password: _pwd, ...safe } = u;
         return safe;
     });
+}
+
+async function validateBillingPlanForUser(role: Role, billingPlanId?: string | null) {
+    if (!billingPlanId || role === "ADMIN") return null;
+
+    const plan = await prisma.billingPlan.findUnique({ where: { id: billingPlanId } });
+    if (!plan) throw { status: 404, message: "Plan no encontrado" };
+    if (!plan.isActive) throw { status: 400, message: "El plan seleccionado está inactivo" };
+    if (plan.targetRole !== role) throw { status: 400, message: "El plan seleccionado no corresponde al rol del usuario" };
+
+    return plan.id;
 }
 
 export async function getUserTambos(userId: string) {
