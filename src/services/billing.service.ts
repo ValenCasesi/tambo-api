@@ -428,6 +428,16 @@ export async function listBillingInstallments(filters: ListInstallmentsFilters) 
         .filter((installment) => !filters.status || installment.effectiveStatus === filters.status);
 }
 
+export async function listMyBillingInstallments(
+    userId: string,
+    filters: Pick<ListInstallmentsFilters, "period" | "status">
+) {
+    return listBillingInstallments({
+        ...filters,
+        userId,
+    });
+}
+
 export async function markBillingInstallmentPaid(id: string) {
     const existing = await prisma.billingInstallment.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "Cuota no encontrada" };

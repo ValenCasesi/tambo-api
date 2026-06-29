@@ -351,6 +351,12 @@ export async function listBillingInstallments(filters) {
         .map(serializeInstallment)
         .filter((installment) => !filters.status || installment.effectiveStatus === filters.status);
 }
+export async function listMyBillingInstallments(userId, filters) {
+    return listBillingInstallments({
+        ...filters,
+        userId,
+    });
+}
 export async function markBillingInstallmentPaid(id) {
     const existing = await prisma.billingInstallment.findUnique({ where: { id } });
     if (!existing)

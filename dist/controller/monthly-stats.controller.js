@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { upsertMonthlyStatistic, getAnnualStatistics, getAllMonthlyStatistics, getMonthlyStatisticsByTambo, updateMonthlyStatistic, deleteMonthlyStatistic } from "../services/monthly-stats.service.js";
+import { upsertMonthlyStatistic, getAnnualStatistics, getAllMonthlyStatistics, getMonthlyStatisticsByTambo, updateMonthlyStatistic, deleteMonthlyStatistic, getMyMonthlyStatsActivitySummary } from "../services/monthly-stats.service.js";
 const monthlyStatSchema = z.object({
     tamboId: z.string().uuid(),
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM (ej: 202602)"),
@@ -93,6 +93,18 @@ export async function getMonthlyStatisticsByTamboHandler(req, res) {
             return res.status(err.status).json({ error: err.message });
         }
         console.error("getMonthlyStatisticsByTamboHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function getMyMonthlyStatsActivitySummaryHandler(req, res) {
+    try {
+        if (!req.user)
+            return res.status(401).json({ error: "No autenticado" });
+        const summary = await getMyMonthlyStatsActivitySummary(req.user.id);
+        return res.status(200).json(summary);
+    }
+    catch (err) {
+        console.error("getMyMonthlyStatsActivitySummaryHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

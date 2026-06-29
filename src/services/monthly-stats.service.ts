@@ -1,5 +1,5 @@
 import prisma from "../prisma/client.js";
-import type { Prisma } from "@prisma/client";
+import { EntityStatus, type Prisma } from "@prisma/client";
 
 export type MonthlyStatisticInput = {
     tamboId: string;
@@ -620,6 +620,51 @@ export async function getMonthlyStatisticsByTambo(tamboId: string, actor?: { id:
         where: { tamboId },
         orderBy: [{ year: 'desc' }, { month: 'desc' }]
     });
+}
+
+export async function getMyMonthlyStatsActivitySummary(userId: string) {
+    const activeTamboCount = await prisma.tambo.count({
+        where: {
+            userId,
+            status: EntityStatus.ACTIVE
+        }
+    });
+
+    if (activeTamboCount === 0) {
+        return {
+            shouldWarn: false,
+            lastLoadedAt: null,
+            daysWithoutStats: null
+        };
+    }
+
+    const latestStat = await prisma.monthlyStatistic.findFirst({
+        where: {
+            tambo: {
+                userId,
+                status: EntityStatus.ACTIVE
+            }
+        },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true }
+    });
+
+    if (!latestStat) {
+        return {
+            shouldWarn: true,
+            lastLoadedAt: null,
+            daysWithoutStats: null
+        };
+    }
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+    const daysWithoutStats = Math.floor((Date.now() - latestStat.updatedAt.getTime()) / millisecondsPerDay);
+
+    return {
+        shouldWarn: daysWithoutStats > 30,
+        lastLoadedAt: latestStat.updatedAt.toISOString(),
+        daysWithoutStats
+    };
 }
 
 export type MonthlyStatisticUpdateInput = Partial<Omit<MonthlyStatisticInput, "tamboId" | "period">>;

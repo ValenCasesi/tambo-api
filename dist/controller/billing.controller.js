@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, markBillingInstallmentPaid, markBillingInstallmentPending, updateBillingPlan, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentPaid, markBillingInstallmentPending, updateBillingPlan, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -27,6 +27,10 @@ const listInstallmentsSchema = z.object({
     status: z.enum([BillingInstallmentStatus.PENDING, BillingInstallmentStatus.PAID, "OVERDUE"]).optional(),
     role: billingRoleSchema.optional(),
     userId: z.string().uuid().optional(),
+});
+const listMyInstallmentsSchema = listInstallmentsSchema.pick({
+    period: true,
+    status: true,
 });
 export async function getBillingPlansHandler(_req, res) {
     try {
@@ -107,6 +111,21 @@ export async function listBillingInstallmentsHandler(req, res) {
         if (err?.issues)
             return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("listBillingInstallmentsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function listMyBillingInstallmentsHandler(req, res) {
+    try {
+        if (!req.user)
+            return res.status(401).json({ error: "No autenticado" });
+        const parsed = listMyInstallmentsSchema.parse(req.query);
+        const cuotas = await listMyBillingInstallments(req.user.id, parsed);
+        return res.status(200).json(cuotas);
+    }
+    catch (err) {
+        if (err?.issues)
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("listMyBillingInstallmentsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

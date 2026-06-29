@@ -7,6 +7,7 @@ import {
     getBillingPlansHandler,
     getMyBillingSummaryHandler,
     listBillingInstallmentsHandler,
+    listMyBillingInstallmentsHandler,
     markBillingInstallmentPaidHandler,
     markBillingInstallmentPendingHandler,
     updateBillingPlanHandler,
@@ -16,6 +17,7 @@ import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 router.get("/billing/me/summary", requireAuth, getMyBillingSummaryHandler);
+router.get("/billing/me/installments", requireAuth, listMyBillingInstallmentsHandler);
 
 router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHandler);
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);

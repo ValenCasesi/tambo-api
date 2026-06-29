@@ -8,6 +8,7 @@ import {
     getBillingPlans,
     getMyBillingSummary,
     listBillingInstallments,
+    listMyBillingInstallments,
     markBillingInstallmentPaid,
     markBillingInstallmentPending,
     updateBillingPlan,
@@ -43,6 +44,11 @@ const listInstallmentsSchema = z.object({
     status: z.enum([BillingInstallmentStatus.PENDING, BillingInstallmentStatus.PAID, "OVERDUE"]).optional(),
     role: billingRoleSchema.optional(),
     userId: z.string().uuid().optional(),
+});
+
+const listMyInstallmentsSchema = listInstallmentsSchema.pick({
+    period: true,
+    status: true,
 });
 
 export async function getBillingPlansHandler(_req: Request, res: Response) {
@@ -115,6 +121,19 @@ export async function listBillingInstallmentsHandler(req: Request, res: Response
     } catch (err: any) {
         if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("listBillingInstallmentsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function listMyBillingInstallmentsHandler(req: Request, res: Response) {
+    try {
+        if (!req.user) return res.status(401).json({ error: "No autenticado" });
+        const parsed = listMyInstallmentsSchema.parse(req.query);
+        const cuotas = await listMyBillingInstallments(req.user.id, parsed);
+        return res.status(200).json(cuotas);
+    } catch (err: any) {
+        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("listMyBillingInstallmentsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
