@@ -52,7 +52,7 @@ function validatePlanShape(input) {
     }
     if (input.planType === BillingPlanType.FIXED_ARS) {
         if (input.fixedPrice === undefined || input.fixedPrice === null || input.fixedPrice <= 0) {
-            throw { status: 400, message: "Los planes fijos requieren un monto mayor a cero" };
+            throw { status: 400, message: "Los planes de empresa requieren litros Siglea mayores a cero" };
         }
     }
 }
@@ -233,6 +233,9 @@ async function createInstallmentForUser(user, input) {
         amount = Number(plan.sigleaLiters) * input.sigleaLiterPrice;
     }
     if (user.role === Role.EMPRESA) {
+        if (!input.sigleaLiterPrice || input.sigleaLiterPrice <= 0) {
+            return { status: "SKIPPED_NO_SIGLEA_PRICE", userId: user.id };
+        }
         const assignedPlan = user.billingPlan?.isActive
             && user.billingPlan.targetRole === Role.EMPRESA
             && user.billingPlan.planType === BillingPlanType.FIXED_ARS
@@ -242,7 +245,7 @@ async function createInstallmentForUser(user, input) {
         if (!plan || plan.fixedPrice === null) {
             return { status: "SKIPPED_NO_PLAN", userId: user.id };
         }
-        amount = Number(plan.fixedPrice);
+        amount = Number(plan.fixedPrice) * input.sigleaLiterPrice;
     }
     if (!plan) {
         return { status: "SKIPPED_NO_PLAN", userId: user.id };
@@ -255,7 +258,7 @@ async function createInstallmentForUser(user, input) {
                 period: input.period,
                 dueDate: input.dueDate,
                 amount,
-                sigleaLiterPrice: user.role === Role.PRODUCTOR ? input.sigleaLiterPrice : null,
+                sigleaLiterPrice: input.sigleaLiterPrice ?? null,
                 voUsed,
                 planNameSnapshot: plan.name,
                 planTypeSnapshot: plan.planType,
