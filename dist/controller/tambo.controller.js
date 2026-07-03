@@ -44,7 +44,8 @@ export async function getAllTambosHandler(req, res) {
         const filters = {
             cuenca: req.query.cuenca,
             size: req.query.size,
-            system: req.query.system
+            system: req.query.system,
+            ownerSearch: req.query.ownerSearch
         };
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;

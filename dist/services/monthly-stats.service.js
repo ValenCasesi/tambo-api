@@ -1,4 +1,5 @@
 import prisma from "../prisma/client.js";
+import { EntityStatus } from "@prisma/client";
 // ==========================================
 // SYNC YEARLY PROJECTIONS HELPER
 // ==========================================
@@ -10,9 +11,30 @@ async function checkOwnership(tamboId, actor) {
         }
     }
 }
-async function syncYearlyProjections(tamboId, year) {
+async function withYearlyStatsLock(tamboId, year, work) {
+    return prisma.$transaction(async (tx) => {
+        const lockName = `monthly-stats:${tamboId}:${year}`;
+        const lockRows = await tx.$queryRaw `SELECT GET_LOCK(${lockName}, 10) AS locked`;
+        const locked = Number(lockRows[0]?.locked ?? 0) === 1;
+        if (!locked) {
+            throw { status: 409, message: "No se pudo bloquear la sincronización de estadísticas. Intentá nuevamente." };
+        }
+        try {
+            return await work(tx);
+        }
+        finally {
+            try {
+                await tx.$queryRaw `SELECT RELEASE_LOCK(${lockName})`;
+            }
+            catch {
+                // The transaction connection owns the lock; ignore release errors to preserve the original result/error.
+            }
+        }
+    });
+}
+async function syncYearlyProjections(db, tamboId, year) {
     // Traverse all months of this year for this tambo to calculate accumulatives
-    const months = await prisma.monthlyStatistic.findMany({
+    const months = await db.monthlyStatistic.findMany({
         where: { tamboId, year },
         orderBy: { month: "asc" }
     });
@@ -95,7 +117,7 @@ async function syncYearlyProjections(tamboId, year) {
             acumAnualCrecimientoFuturo = (sumCrecimientoFuturo * 100) / (sumVacasTotales / 12);
         }
         // Only update these fields
-        await prisma.monthlyStatistic.update({
+        await db.monthlyStatistic.update({
             where: { id: record.id },
             data: {
                 proyeccionAnualNatimortos,
@@ -123,192 +145,196 @@ export async function upsertMonthlyStatistic(input, actor) {
     const month = parseInt(period.substring(4, 6), 10);
     const year = parseInt(period.substring(0, 4), 10);
     const diasMes = new Date(year, month, 0).getDate();
-    const existing = await prisma.monthlyStatistic.findUnique({
-        where: { tamboId_period: { tamboId, period } }
+    return withYearlyStatsLock(tamboId, year, async (tx) => {
+        const existing = await tx.monthlyStatistic.findUnique({
+            where: { tamboId_period: { tamboId, period } }
+        });
+        const vPartosVaquillonas = input.partosVaquillonas !== undefined ? input.partosVaquillonas : (existing ? Number(existing.partosVaquillonas) : 0);
+        const vPartosVacas = input.partosVacas !== undefined ? input.partosVacas : (existing ? Number(existing.partosVacas) : 0);
+        const vVacasOrdene = input.vacasOrdene !== undefined ? input.vacasOrdene : (existing ? Number(existing.vacasOrdene) : 0);
+        const vVacasSecas = input.vacasSecas !== undefined ? input.vacasSecas : (existing ? Number(existing.vacasSecas) : 0);
+        const vLitrosUsina = input.litrosUsina !== undefined ? input.litrosUsina : (existing ? Number(existing.litrosUsina) : 0);
+        const vLitrosDescarte = input.litrosDescarte !== undefined ? input.litrosDescarte : (existing ? Number(existing.litrosDescarte) : 0);
+        const vLitrosGuachera = input.litrosGuachera !== undefined ? input.litrosGuachera : (existing ? Number(existing.litrosGuachera) : 0);
+        const vTernerosMuertosPeriparto = input.ternerosMuertosPeriparto !== undefined ? input.ternerosMuertosPeriparto : (existing && existing.ternerosMuertosPeriparto != null ? Number(existing.ternerosMuertosPeriparto) : null);
+        const vTernerosMachosNacidosVivos = input.ternerosMachosNacidosVivos !== undefined ? input.ternerosMachosNacidosVivos : (existing && existing.ternerosMachosNacidosVivos != null ? Number(existing.ternerosMachosNacidosVivos) : null);
+        const vTernerasHembrasNacidasVivas = input.ternerasHembrasNacidasVivas !== undefined ? input.ternerasHembrasNacidasVivas : (existing && existing.ternerasHembrasNacidasVivas != null ? Number(existing.ternerasHembrasNacidasVivas) : null);
+        const vCantNacimientosMellizos = input.cantNacimientosMellizos !== undefined ? input.cantNacimientosMellizos : (existing && existing.cantNacimientosMellizos != null ? Number(existing.cantNacimientosMellizos) : null);
+        const vTernerosMuertosGuachera = input.ternerosMuertosGuachera !== undefined ? input.ternerosMuertosGuachera : (existing && existing.ternerosMuertosGuachera != null ? Number(existing.ternerosMuertosGuachera) : null);
+        const vTernerosIngresadosGuachera = input.ternerosIngresadosGuachera !== undefined ? input.ternerosIngresadosGuachera : (existing && existing.ternerosIngresadosGuachera != null ? Number(existing.ternerosIngresadosGuachera) : null);
+        const vCantTernerasHembrasIngRecria = input.cantTernerasHembrasIngRecria !== undefined ? input.cantTernerasHembrasIngRecria : (existing && existing.cantTernerasHembrasIngRecria != null ? Number(existing.cantTernerasHembrasIngRecria) : null);
+        const vCantHembrasRecriaHastaServMuertas = input.cantHembrasRecriaHastaServMuertas !== undefined ? input.cantHembrasRecriaHastaServMuertas : (existing && existing.cantHembrasRecriaHastaServMuertas != null ? Number(existing.cantHembrasRecriaHastaServMuertas) : null);
+        const vEdadVaquillonasPrimerServicioMeses = input.edadVaquillonasPrimerServicioMeses !== undefined ? input.edadVaquillonasPrimerServicioMeses : (existing && existing.edadVaquillonasPrimerServicioMeses != null ? Number(existing.edadVaquillonasPrimerServicioMeses) : null);
+        const vCantVacasMuertasMes = input.cantVacasMuertasMes !== undefined ? input.cantVacasMuertasMes : (existing && existing.cantVacasMuertasMes != null ? Number(existing.cantVacasMuertasMes) : null);
+        const vCantVacasVendidasMes = input.cantVacasVendidasMes !== undefined ? input.cantVacasVendidasMes : (existing && existing.cantVacasVendidasMes != null ? Number(existing.cantVacasVendidasMes) : null);
+        const vCantVaquillonasPrenadas = input.CantVaquillonasPrenadas !== undefined ? input.CantVaquillonasPrenadas : (existing && existing.CantVaquillonasPrenadas != null ? Number(existing.CantVaquillonasPrenadas) : null);
+        const vCantVacasPrenadas = input.CantVacasPrenadas !== undefined ? input.CantVacasPrenadas : (existing && existing.CantVacasPrenadas != null ? Number(existing.CantVacasPrenadas) : null);
+        const vCantVacasAbortadas = input.CantVacasAbortadas !== undefined ? input.CantVacasAbortadas : (existing && existing.CantVacasAbortadas != null ? Number(existing.CantVacasAbortadas) : null);
+        const vCantVaquillonasAbortadas = input.cantVaquillonasAbortadas !== undefined ? input.cantVaquillonasAbortadas : (existing && existing.cantVaquillonasAbortadas != null ? Number(existing.cantVaquillonasAbortadas) : null);
+        const vDiasIPPS = input.diasIPPS !== undefined ? input.diasIPPS : (existing && existing.diasIPPS != null ? Number(existing.diasIPPS) : null);
+        const vPorcentajeIPPS = input.porcentajeIPPS !== undefined ? input.porcentajeIPPS : (existing && existing.porcentajeIPPS != null ? Number(existing.porcentajeIPPS) : null);
+        const vCantVacasMetritis = input.cantVacasMetritis !== undefined ? input.cantVacasMetritis : (existing && existing.cantVacasMetritis != null ? Number(existing.cantVacasMetritis) : null);
+        const vCantVacasRetencionPlacenta = input.CantVacasRetencionPlacenta !== undefined ? input.CantVacasRetencionPlacenta : (existing && existing.CantVacasRetencionPlacenta != null ? Number(existing.CantVacasRetencionPlacenta) : null);
+        const vCantVacasCaidas = input.cantVacasCaidas !== undefined ? input.cantVacasCaidas : (existing && existing.cantVacasCaidas != null ? Number(existing.cantVacasCaidas) : null);
+        const vDiasDeLeche = input.diasDeLeche !== undefined ? input.diasDeLeche : (existing && existing.diasDeLeche != null ? Number(existing.diasDeLeche) : null);
+        const vConteoCelulasSomaticas = input.conteoCelulasSomaticas !== undefined ? input.conteoCelulasSomaticas : (existing && existing.conteoCelulasSomaticas != null ? Number(existing.conteoCelulasSomaticas) : null);
+        const vConteoBacteriasTotales = input.conteoBacteriasTotales !== undefined ? input.conteoBacteriasTotales : (existing && existing.conteoBacteriasTotales != null ? Number(existing.conteoBacteriasTotales) : null);
+        const vCasosClinicosMastitis = input.casosClinicosMastitis !== undefined ? input.casosClinicosMastitis : (existing && existing.casosClinicosMastitis != null ? Number(existing.casosClinicosMastitis) : null);
+        const vConteoCultivoPlacasPositivo = input.conteoCultivoPlacasPositivo !== undefined ? input.conteoCultivoPlacasPositivo : (existing && existing.conteoCultivoPlacasPositivo != null ? Number(existing.conteoCultivoPlacasPositivo) : null);
+        const vConteoCultivoPlacasContaminados = input.conteoCultivoPlacasContaminados !== undefined ? input.conteoCultivoPlacasContaminados : (existing && existing.conteoCultivoPlacasContaminados != null ? Number(existing.conteoCultivoPlacasContaminados) : null);
+        // Base Calculations
+        const partosTotales = vPartosVaquillonas + vPartosVacas;
+        const vacasTotales = vVacasOrdene + vVacasSecas;
+        const promedioLitrosVaca = vVacasOrdene > 0
+            ? (vLitrosUsina + vLitrosDescarte + vLitrosGuachera) / diasMes / vVacasOrdene
+            : 0;
+        let porcentajePartoVaquillonas = null;
+        if (vacasTotales > 0) {
+            porcentajePartoVaquillonas = (vPartosVaquillonas * 100) / vacasTotales;
+        }
+        // Optional Fields Calculations
+        let totalTernerosNacidosVivos = null;
+        if (vTernerosMachosNacidosVivos != null && vTernerasHembrasNacidasVivas != null) {
+            totalTernerosNacidosVivos = vTernerosMachosNacidosVivos + vTernerasHembrasNacidasVivas;
+        }
+        let porcentajeNatimortos = null;
+        if (vTernerosMuertosPeriparto != null && partosTotales > 0) {
+            porcentajeNatimortos = (vTernerosMuertosPeriparto * 100) / partosTotales;
+        }
+        let porcentajeTernerosMuertosGuacheraMes = null;
+        if (vTernerosIngresadosGuachera != null && vTernerosIngresadosGuachera > 0 && vTernerosMuertosGuachera != null) {
+            porcentajeTernerosMuertosGuacheraMes = (vTernerosMuertosGuachera * 100) / vTernerosIngresadosGuachera;
+        }
+        let porcentajeMortandadRecriaMes = null;
+        if (vCantTernerasHembrasIngRecria != null && vCantTernerasHembrasIngRecria > 0 && vCantHembrasRecriaHastaServMuertas != null) {
+            porcentajeMortandadRecriaMes = (vCantHembrasRecriaHastaServMuertas * 100) / vCantTernerasHembrasIngRecria;
+        }
+        let refugoTotalVacas = null;
+        if (vCantVacasMuertasMes != null && vCantVacasVendidasMes != null) {
+            refugoTotalVacas = vCantVacasMuertasMes + vCantVacasVendidasMes;
+        }
+        let porcentajeRefugoVacasMes = null;
+        if (refugoTotalVacas != null && vacasTotales > 0) {
+            porcentajeRefugoVacasMes = (refugoTotalVacas * 100) / vacasTotales;
+        }
+        let porcentajeRefugoVacasMensual = null;
+        if (refugoTotalVacas != null && vacasTotales > 0) {
+            porcentajeRefugoVacasMensual = (refugoTotalVacas * 100) / (vacasTotales / 12);
+        }
+        let porcentajeVacasMuertasMes = null;
+        if (vCantVacasMuertasMes != null && vacasTotales > 0) {
+            porcentajeVacasMuertasMes = (vCantVacasMuertasMes * 100) / vacasTotales;
+        }
+        let porcentajeVacasMuertasMensual = null;
+        if (vCantVacasMuertasMes != null && vacasTotales > 0) {
+            porcentajeVacasMuertasMensual = (vCantVacasMuertasMes * 100) / (vacasTotales / 12);
+        }
+        let porcentajeVacasVendidas = null;
+        if (vCantVacasVendidasMes != null && vacasTotales > 0) {
+            porcentajeVacasVendidas = (vCantVacasVendidasMes * 100) / (vacasTotales / 12);
+        }
+        let porcentajeVacasPrenadas = null;
+        let animalesPrenados = null;
+        if (vCantVaquillonasPrenadas != null && vCantVacasPrenadas != null) {
+            animalesPrenados = vCantVaquillonasPrenadas + vCantVacasPrenadas;
+        }
+        if (vCantVacasPrenadas != null && vacasTotales > 0) {
+            porcentajeVacasPrenadas = (vCantVacasPrenadas * 100) / vacasTotales;
+        }
+        let porcentajeAbortoVacasMes = null;
+        if (vCantVacasAbortadas != null && vCantVacasPrenadas != null && vCantVacasPrenadas > 0) {
+            porcentajeAbortoVacasMes = (vCantVacasAbortadas * 100) / vCantVacasPrenadas;
+        }
+        let porcentajeVaquillonasAbortadasMes = null;
+        if (vCantVaquillonasAbortadas != null && vCantVaquillonasPrenadas != null && vCantVaquillonasPrenadas > 0) {
+            porcentajeVaquillonasAbortadasMes = (vCantVaquillonasAbortadas * 100) / vCantVaquillonasPrenadas;
+        }
+        let porcentajeMetritisVacas = null;
+        if (vCantVacasMetritis != null && partosTotales > 0) {
+            porcentajeMetritisVacas = (vCantVacasMetritis * 100) / partosTotales;
+        }
+        let porcentajeRetencionPlacentaVacas = null;
+        if (vCantVacasRetencionPlacenta != null && partosTotales > 0) {
+            porcentajeRetencionPlacentaVacas = (vCantVacasRetencionPlacenta * 100) / partosTotales;
+        }
+        let porcentajeVacasCaida = null;
+        if (vCantVacasCaidas != null && partosTotales > 0) {
+            porcentajeVacasCaida = (vCantVacasCaidas * 100) / partosTotales;
+        }
+        let crecimientoAnual = null;
+        if (refugoTotalVacas != null) {
+            crecimientoAnual = vPartosVaquillonas - refugoTotalVacas;
+        }
+        let crecimientoFuturo = null;
+        if (vCantVaquillonasPrenadas != null && vCantVaquillonasAbortadas != null && refugoTotalVacas != null) {
+            crecimientoFuturo = (vCantVaquillonasPrenadas - vCantVaquillonasAbortadas) - refugoTotalVacas;
+        }
+        let porcentajeCasosClinicosMastitis = null;
+        if (vCasosClinicosMastitis != null && vVacasOrdene > 0) {
+            porcentajeCasosClinicosMastitis = (vCasosClinicosMastitis * 100) / vVacasOrdene;
+        }
+        let conteoCultivoPlacasNegativas = null;
+        let porcentajeConteoPlacasPositivo = null;
+        let porcentajeConteoPlacasNegativo = null;
+        let porcentajeConteoPlacasContaminado = null;
+        if (vCasosClinicosMastitis != null && vConteoCultivoPlacasPositivo != null && vConteoCultivoPlacasContaminados != null) {
+            conteoCultivoPlacasNegativas = vCasosClinicosMastitis - vConteoCultivoPlacasPositivo - vConteoCultivoPlacasContaminados;
+        }
+        if (vCasosClinicosMastitis != null && vCasosClinicosMastitis > 0) {
+            if (vConteoCultivoPlacasPositivo != null)
+                porcentajeConteoPlacasPositivo = (vConteoCultivoPlacasPositivo * 100) / vCasosClinicosMastitis;
+            if (conteoCultivoPlacasNegativas != null)
+                porcentajeConteoPlacasNegativo = (conteoCultivoPlacasNegativas * 100) / vCasosClinicosMastitis;
+            if (vConteoCultivoPlacasContaminados != null)
+                porcentajeConteoPlacasContaminado = (vConteoCultivoPlacasContaminados * 100) / vCasosClinicosMastitis;
+        }
+        const dataPayload = {
+            partosVaquillonas: vPartosVaquillonas, partosVacas: vPartosVacas, vacasOrdene: vVacasOrdene, vacasSecas: vVacasSecas,
+            litrosUsina: vLitrosUsina, litrosDescarte: vLitrosDescarte, litrosGuachera: vLitrosGuachera,
+            ternerosMuertosPeriparto: vTernerosMuertosPeriparto, ternerosMachosNacidosVivos: vTernerosMachosNacidosVivos, ternerasHembrasNacidasVivas: vTernerasHembrasNacidasVivas,
+            cantNacimientosMellizos: vCantNacimientosMellizos, ternerosMuertosGuachera: vTernerosMuertosGuachera, ternerosIngresadosGuachera: vTernerosIngresadosGuachera,
+            cantTernerasHembrasIngRecria: vCantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas: vCantHembrasRecriaHastaServMuertas,
+            edadVaquillonasPrimerServicioMeses: vEdadVaquillonasPrimerServicioMeses, cantVacasMuertasMes: vCantVacasMuertasMes, cantVacasVendidasMes: vCantVacasVendidasMes,
+            partosTotales, vacasTotales, promedioLitrosVaca, porcentajePartoVaquillonas,
+            porcentajeNatimortos, totalTernerosNacidosVivos,
+            porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes,
+            refugoTotalVacas, porcentajeRefugoVacasMes, porcentajeRefugoVacasMensual,
+            porcentajeVacasMuertasMes, porcentajeVacasMuertasMensual, porcentajeVacasVendidas,
+            CantVaquillonasPrenadas: vCantVaquillonasPrenadas, CantVacasPrenadas: vCantVacasPrenadas,
+            CantVacasAbortadas: vCantVacasAbortadas, cantVaquillonasAbortadas: vCantVaquillonasAbortadas,
+            diasIPPS: vDiasIPPS, porcentajeIPPS: vPorcentajeIPPS, cantVacasMetritis: vCantVacasMetritis,
+            CantVacasRetencionPlacenta: vCantVacasRetencionPlacenta, cantVacasCaidas: vCantVacasCaidas,
+            diasDeLeche: vDiasDeLeche, conteoCelulasSomaticas: vConteoCelulasSomaticas,
+            conteoBacteriasTotales: vConteoBacteriasTotales, casosClinicosMastitis: vCasosClinicosMastitis,
+            conteoCultivoPlacasPositivo: vConteoCultivoPlacasPositivo, conteoCultivoPlacasContaminados: vConteoCultivoPlacasContaminados,
+            porcentajeVacasPrenadas, animalesPrenados, porcentajeAbortoVacasMes, porcentajeVaquillonasAbortadasMes,
+            porcentajeMetritisVacas, porcentajeRetencionPlacentaVacas, porcentajeVacasCaida, crecimientoAnual, crecimientoFuturo,
+            porcentajeCasosClinicosMastitis, conteoCultivoPlacasNegativas, porcentajeConteoPlacasPositivo,
+            porcentajeConteoPlacasNegativo, porcentajeConteoPlacasContaminado
+        };
+        let result;
+        if (existing) {
+            result = await tx.monthlyStatistic.update({
+                where: { id: existing.id },
+                data: dataPayload
+            });
+        }
+        else {
+            result = await tx.monthlyStatistic.create({
+                data: {
+                    tamboId,
+                    period,
+                    month,
+                    year,
+                    ...dataPayload
+                }
+            });
+        }
+        await syncYearlyProjections(tx, tamboId, year);
+        return tx.monthlyStatistic.findUniqueOrThrow({
+            where: { id: result.id }
+        });
     });
-    const vPartosVaquillonas = input.partosVaquillonas !== undefined ? input.partosVaquillonas : (existing ? Number(existing.partosVaquillonas) : 0);
-    const vPartosVacas = input.partosVacas !== undefined ? input.partosVacas : (existing ? Number(existing.partosVacas) : 0);
-    const vVacasOrdene = input.vacasOrdene !== undefined ? input.vacasOrdene : (existing ? Number(existing.vacasOrdene) : 0);
-    const vVacasSecas = input.vacasSecas !== undefined ? input.vacasSecas : (existing ? Number(existing.vacasSecas) : 0);
-    const vLitrosUsina = input.litrosUsina !== undefined ? input.litrosUsina : (existing ? Number(existing.litrosUsina) : 0);
-    const vLitrosDescarte = input.litrosDescarte !== undefined ? input.litrosDescarte : (existing ? Number(existing.litrosDescarte) : 0);
-    const vLitrosGuachera = input.litrosGuachera !== undefined ? input.litrosGuachera : (existing ? Number(existing.litrosGuachera) : 0);
-    const vTernerosMuertosPeriparto = input.ternerosMuertosPeriparto !== undefined ? input.ternerosMuertosPeriparto : (existing && existing.ternerosMuertosPeriparto != null ? Number(existing.ternerosMuertosPeriparto) : null);
-    const vTernerosMachosNacidosVivos = input.ternerosMachosNacidosVivos !== undefined ? input.ternerosMachosNacidosVivos : (existing && existing.ternerosMachosNacidosVivos != null ? Number(existing.ternerosMachosNacidosVivos) : null);
-    const vTernerasHembrasNacidasVivas = input.ternerasHembrasNacidasVivas !== undefined ? input.ternerasHembrasNacidasVivas : (existing && existing.ternerasHembrasNacidasVivas != null ? Number(existing.ternerasHembrasNacidasVivas) : null);
-    const vCantNacimientosMellizos = input.cantNacimientosMellizos !== undefined ? input.cantNacimientosMellizos : (existing && existing.cantNacimientosMellizos != null ? Number(existing.cantNacimientosMellizos) : null);
-    const vTernerosMuertosGuachera = input.ternerosMuertosGuachera !== undefined ? input.ternerosMuertosGuachera : (existing && existing.ternerosMuertosGuachera != null ? Number(existing.ternerosMuertosGuachera) : null);
-    const vTernerosIngresadosGuachera = input.ternerosIngresadosGuachera !== undefined ? input.ternerosIngresadosGuachera : (existing && existing.ternerosIngresadosGuachera != null ? Number(existing.ternerosIngresadosGuachera) : null);
-    const vCantTernerasHembrasIngRecria = input.cantTernerasHembrasIngRecria !== undefined ? input.cantTernerasHembrasIngRecria : (existing && existing.cantTernerasHembrasIngRecria != null ? Number(existing.cantTernerasHembrasIngRecria) : null);
-    const vCantHembrasRecriaHastaServMuertas = input.cantHembrasRecriaHastaServMuertas !== undefined ? input.cantHembrasRecriaHastaServMuertas : (existing && existing.cantHembrasRecriaHastaServMuertas != null ? Number(existing.cantHembrasRecriaHastaServMuertas) : null);
-    const vEdadVaquillonasPrimerServicioMeses = input.edadVaquillonasPrimerServicioMeses !== undefined ? input.edadVaquillonasPrimerServicioMeses : (existing && existing.edadVaquillonasPrimerServicioMeses != null ? Number(existing.edadVaquillonasPrimerServicioMeses) : null);
-    const vCantVacasMuertasMes = input.cantVacasMuertasMes !== undefined ? input.cantVacasMuertasMes : (existing && existing.cantVacasMuertasMes != null ? Number(existing.cantVacasMuertasMes) : null);
-    const vCantVacasVendidasMes = input.cantVacasVendidasMes !== undefined ? input.cantVacasVendidasMes : (existing && existing.cantVacasVendidasMes != null ? Number(existing.cantVacasVendidasMes) : null);
-    const vCantVaquillonasPrenadas = input.CantVaquillonasPrenadas !== undefined ? input.CantVaquillonasPrenadas : (existing && existing.CantVaquillonasPrenadas != null ? Number(existing.CantVaquillonasPrenadas) : null);
-    const vCantVacasPrenadas = input.CantVacasPrenadas !== undefined ? input.CantVacasPrenadas : (existing && existing.CantVacasPrenadas != null ? Number(existing.CantVacasPrenadas) : null);
-    const vCantVacasAbortadas = input.CantVacasAbortadas !== undefined ? input.CantVacasAbortadas : (existing && existing.CantVacasAbortadas != null ? Number(existing.CantVacasAbortadas) : null);
-    const vCantVaquillonasAbortadas = input.cantVaquillonasAbortadas !== undefined ? input.cantVaquillonasAbortadas : (existing && existing.cantVaquillonasAbortadas != null ? Number(existing.cantVaquillonasAbortadas) : null);
-    const vDiasIPPS = input.diasIPPS !== undefined ? input.diasIPPS : (existing && existing.diasIPPS != null ? Number(existing.diasIPPS) : null);
-    const vPorcentajeIPPS = input.porcentajeIPPS !== undefined ? input.porcentajeIPPS : (existing && existing.porcentajeIPPS != null ? Number(existing.porcentajeIPPS) : null);
-    const vCantVacasMetritis = input.cantVacasMetritis !== undefined ? input.cantVacasMetritis : (existing && existing.cantVacasMetritis != null ? Number(existing.cantVacasMetritis) : null);
-    const vCantVacasRetencionPlacenta = input.CantVacasRetencionPlacenta !== undefined ? input.CantVacasRetencionPlacenta : (existing && existing.CantVacasRetencionPlacenta != null ? Number(existing.CantVacasRetencionPlacenta) : null);
-    const vCantVacasCaidas = input.cantVacasCaidas !== undefined ? input.cantVacasCaidas : (existing && existing.cantVacasCaidas != null ? Number(existing.cantVacasCaidas) : null);
-    const vDiasDeLeche = input.diasDeLeche !== undefined ? input.diasDeLeche : (existing && existing.diasDeLeche != null ? Number(existing.diasDeLeche) : null);
-    const vConteoCelulasSomaticas = input.conteoCelulasSomaticas !== undefined ? input.conteoCelulasSomaticas : (existing && existing.conteoCelulasSomaticas != null ? Number(existing.conteoCelulasSomaticas) : null);
-    const vConteoBacteriasTotales = input.conteoBacteriasTotales !== undefined ? input.conteoBacteriasTotales : (existing && existing.conteoBacteriasTotales != null ? Number(existing.conteoBacteriasTotales) : null);
-    const vCasosClinicosMastitis = input.casosClinicosMastitis !== undefined ? input.casosClinicosMastitis : (existing && existing.casosClinicosMastitis != null ? Number(existing.casosClinicosMastitis) : null);
-    const vConteoCultivoPlacasPositivo = input.conteoCultivoPlacasPositivo !== undefined ? input.conteoCultivoPlacasPositivo : (existing && existing.conteoCultivoPlacasPositivo != null ? Number(existing.conteoCultivoPlacasPositivo) : null);
-    const vConteoCultivoPlacasContaminados = input.conteoCultivoPlacasContaminados !== undefined ? input.conteoCultivoPlacasContaminados : (existing && existing.conteoCultivoPlacasContaminados != null ? Number(existing.conteoCultivoPlacasContaminados) : null);
-    // Base Calculations
-    const partosTotales = vPartosVaquillonas + vPartosVacas;
-    const vacasTotales = vVacasOrdene + vVacasSecas;
-    const promedioLitrosVaca = vVacasOrdene > 0
-        ? (vLitrosUsina + vLitrosDescarte + vLitrosGuachera) / diasMes / vVacasOrdene
-        : 0;
-    let porcentajePartoVaquillonas = null;
-    if (vacasTotales > 0) {
-        porcentajePartoVaquillonas = (vPartosVaquillonas * 100) / vacasTotales;
-    }
-    // Optional Fields Calculations
-    let totalTernerosNacidosVivos = null;
-    if (vTernerosMachosNacidosVivos != null && vTernerasHembrasNacidasVivas != null) {
-        totalTernerosNacidosVivos = vTernerosMachosNacidosVivos + vTernerasHembrasNacidasVivas;
-    }
-    let porcentajeNatimortos = null;
-    if (vTernerosMuertosPeriparto != null && partosTotales > 0) {
-        porcentajeNatimortos = (vTernerosMuertosPeriparto * 100) / partosTotales;
-    }
-    let porcentajeTernerosMuertosGuacheraMes = null;
-    if (vTernerosIngresadosGuachera != null && vTernerosIngresadosGuachera > 0 && vTernerosMuertosGuachera != null) {
-        porcentajeTernerosMuertosGuacheraMes = (vTernerosMuertosGuachera * 100) / vTernerosIngresadosGuachera;
-    }
-    let porcentajeMortandadRecriaMes = null;
-    if (vCantTernerasHembrasIngRecria != null && vCantTernerasHembrasIngRecria > 0 && vCantHembrasRecriaHastaServMuertas != null) {
-        porcentajeMortandadRecriaMes = (vCantHembrasRecriaHastaServMuertas * 100) / vCantTernerasHembrasIngRecria;
-    }
-    let refugoTotalVacas = null;
-    if (vCantVacasMuertasMes != null && vCantVacasVendidasMes != null) {
-        refugoTotalVacas = vCantVacasMuertasMes + vCantVacasVendidasMes;
-    }
-    let porcentajeRefugoVacasMes = null;
-    if (refugoTotalVacas != null && vacasTotales > 0) {
-        porcentajeRefugoVacasMes = (refugoTotalVacas * 100) / vacasTotales;
-    }
-    let porcentajeRefugoVacasMensual = null;
-    if (refugoTotalVacas != null && vacasTotales > 0) {
-        porcentajeRefugoVacasMensual = (refugoTotalVacas * 100) / (vacasTotales / 12);
-    }
-    let porcentajeVacasMuertasMes = null;
-    if (vCantVacasMuertasMes != null && vacasTotales > 0) {
-        porcentajeVacasMuertasMes = (vCantVacasMuertasMes * 100) / vacasTotales;
-    }
-    let porcentajeVacasMuertasMensual = null;
-    if (vCantVacasMuertasMes != null && vacasTotales > 0) {
-        porcentajeVacasMuertasMensual = (vCantVacasMuertasMes * 100) / (vacasTotales / 12);
-    }
-    let porcentajeVacasVendidas = null;
-    if (vCantVacasVendidasMes != null && vacasTotales > 0) {
-        porcentajeVacasVendidas = (vCantVacasVendidasMes * 100) / (vacasTotales / 12);
-    }
-    let porcentajeVacasPrenadas = null;
-    let animalesPrenados = null;
-    if (vCantVaquillonasPrenadas != null && vCantVacasPrenadas != null) {
-        animalesPrenados = vCantVaquillonasPrenadas + vCantVacasPrenadas;
-    }
-    if (vCantVacasPrenadas != null && vacasTotales > 0) {
-        porcentajeVacasPrenadas = (vCantVacasPrenadas * 100) / vacasTotales;
-    }
-    let porcentajeAbortoVacasMes = null;
-    if (vCantVacasAbortadas != null && vCantVacasPrenadas != null && vCantVacasPrenadas > 0) {
-        porcentajeAbortoVacasMes = (vCantVacasAbortadas * 100) / vCantVacasPrenadas;
-    }
-    let porcentajeVaquillonasAbortadasMes = null;
-    if (vCantVaquillonasAbortadas != null && vCantVaquillonasPrenadas != null && vCantVaquillonasPrenadas > 0) {
-        porcentajeVaquillonasAbortadasMes = (vCantVaquillonasAbortadas * 100) / vCantVaquillonasPrenadas;
-    }
-    let porcentajeMetritisVacas = null;
-    if (vCantVacasMetritis != null && partosTotales > 0) {
-        porcentajeMetritisVacas = (vCantVacasMetritis * 100) / partosTotales;
-    }
-    let porcentajeRetencionPlacentaVacas = null;
-    if (vCantVacasRetencionPlacenta != null && partosTotales > 0) {
-        porcentajeRetencionPlacentaVacas = (vCantVacasRetencionPlacenta * 100) / partosTotales;
-    }
-    let porcentajeVacasCaida = null;
-    if (vCantVacasCaidas != null && partosTotales > 0) {
-        porcentajeVacasCaida = (vCantVacasCaidas * 100) / partosTotales;
-    }
-    let crecimientoAnual = null;
-    if (refugoTotalVacas != null) {
-        crecimientoAnual = vPartosVaquillonas - refugoTotalVacas;
-    }
-    let crecimientoFuturo = null;
-    if (vCantVaquillonasPrenadas != null && vCantVaquillonasAbortadas != null && refugoTotalVacas != null) {
-        crecimientoFuturo = (vCantVaquillonasPrenadas - vCantVaquillonasAbortadas) - refugoTotalVacas;
-    }
-    let porcentajeCasosClinicosMastitis = null;
-    if (vCasosClinicosMastitis != null && vVacasOrdene > 0) {
-        porcentajeCasosClinicosMastitis = (vCasosClinicosMastitis * 100) / vVacasOrdene;
-    }
-    let conteoCultivoPlacasNegativas = null;
-    let porcentajeConteoPlacasPositivo = null;
-    let porcentajeConteoPlacasNegativo = null;
-    let porcentajeConteoPlacasContaminado = null;
-    if (vCasosClinicosMastitis != null && vConteoCultivoPlacasPositivo != null && vConteoCultivoPlacasContaminados != null) {
-        conteoCultivoPlacasNegativas = vCasosClinicosMastitis - vConteoCultivoPlacasPositivo - vConteoCultivoPlacasContaminados;
-    }
-    if (vCasosClinicosMastitis != null && vCasosClinicosMastitis > 0) {
-        if (vConteoCultivoPlacasPositivo != null)
-            porcentajeConteoPlacasPositivo = (vConteoCultivoPlacasPositivo * 100) / vCasosClinicosMastitis;
-        if (conteoCultivoPlacasNegativas != null)
-            porcentajeConteoPlacasNegativo = (conteoCultivoPlacasNegativas * 100) / vCasosClinicosMastitis;
-        if (vConteoCultivoPlacasContaminados != null)
-            porcentajeConteoPlacasContaminado = (vConteoCultivoPlacasContaminados * 100) / vCasosClinicosMastitis;
-    }
-    const dataPayload = {
-        partosVaquillonas: vPartosVaquillonas, partosVacas: vPartosVacas, vacasOrdene: vVacasOrdene, vacasSecas: vVacasSecas,
-        litrosUsina: vLitrosUsina, litrosDescarte: vLitrosDescarte, litrosGuachera: vLitrosGuachera,
-        ternerosMuertosPeriparto: vTernerosMuertosPeriparto, ternerosMachosNacidosVivos: vTernerosMachosNacidosVivos, ternerasHembrasNacidasVivas: vTernerasHembrasNacidasVivas,
-        cantNacimientosMellizos: vCantNacimientosMellizos, ternerosMuertosGuachera: vTernerosMuertosGuachera, ternerosIngresadosGuachera: vTernerosIngresadosGuachera,
-        cantTernerasHembrasIngRecria: vCantTernerasHembrasIngRecria, cantHembrasRecriaHastaServMuertas: vCantHembrasRecriaHastaServMuertas,
-        edadVaquillonasPrimerServicioMeses: vEdadVaquillonasPrimerServicioMeses, cantVacasMuertasMes: vCantVacasMuertasMes, cantVacasVendidasMes: vCantVacasVendidasMes,
-        partosTotales, vacasTotales, promedioLitrosVaca, porcentajePartoVaquillonas,
-        porcentajeNatimortos, totalTernerosNacidosVivos,
-        porcentajeTernerosMuertosGuacheraMes, porcentajeMortandadRecriaMes,
-        refugoTotalVacas, porcentajeRefugoVacasMes, porcentajeRefugoVacasMensual,
-        porcentajeVacasMuertasMes, porcentajeVacasMuertasMensual, porcentajeVacasVendidas,
-        CantVaquillonasPrenadas: vCantVaquillonasPrenadas, CantVacasPrenadas: vCantVacasPrenadas,
-        CantVacasAbortadas: vCantVacasAbortadas, cantVaquillonasAbortadas: vCantVaquillonasAbortadas,
-        diasIPPS: vDiasIPPS, porcentajeIPPS: vPorcentajeIPPS, cantVacasMetritis: vCantVacasMetritis,
-        CantVacasRetencionPlacenta: vCantVacasRetencionPlacenta, cantVacasCaidas: vCantVacasCaidas,
-        diasDeLeche: vDiasDeLeche, conteoCelulasSomaticas: vConteoCelulasSomaticas,
-        conteoBacteriasTotales: vConteoBacteriasTotales, casosClinicosMastitis: vCasosClinicosMastitis,
-        conteoCultivoPlacasPositivo: vConteoCultivoPlacasPositivo, conteoCultivoPlacasContaminados: vConteoCultivoPlacasContaminados,
-        porcentajeVacasPrenadas, animalesPrenados, porcentajeAbortoVacasMes, porcentajeVaquillonasAbortadasMes,
-        porcentajeMetritisVacas, porcentajeRetencionPlacentaVacas, porcentajeVacasCaida, crecimientoAnual, crecimientoFuturo,
-        porcentajeCasosClinicosMastitis, conteoCultivoPlacasNegativas, porcentajeConteoPlacasPositivo,
-        porcentajeConteoPlacasNegativo, porcentajeConteoPlacasContaminado
-    };
-    let result;
-    if (existing) {
-        result = await prisma.monthlyStatistic.update({
-            where: { id: existing.id },
-            data: dataPayload
-        });
-    }
-    else {
-        result = await prisma.monthlyStatistic.create({
-            data: {
-                tamboId,
-                period,
-                month,
-                year,
-                ...dataPayload
-            }
-        });
-    }
-    await syncYearlyProjections(tamboId, year);
-    return result;
 }
 export async function getAnnualStatistics(tamboId, year, actor) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
@@ -470,6 +496,45 @@ export async function getMonthlyStatisticsByTambo(tamboId, actor) {
         orderBy: [{ year: 'desc' }, { month: 'desc' }]
     });
 }
+export async function getMyMonthlyStatsActivitySummary(userId) {
+    const activeTamboCount = await prisma.tambo.count({
+        where: {
+            userId,
+            status: EntityStatus.ACTIVE
+        }
+    });
+    if (activeTamboCount === 0) {
+        return {
+            shouldWarn: false,
+            lastLoadedAt: null,
+            daysWithoutStats: null
+        };
+    }
+    const latestStat = await prisma.monthlyStatistic.findFirst({
+        where: {
+            tambo: {
+                userId,
+                status: EntityStatus.ACTIVE
+            }
+        },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true }
+    });
+    if (!latestStat) {
+        return {
+            shouldWarn: true,
+            lastLoadedAt: null,
+            daysWithoutStats: null
+        };
+    }
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+    const daysWithoutStats = Math.floor((Date.now() - latestStat.updatedAt.getTime()) / millisecondsPerDay);
+    return {
+        shouldWarn: daysWithoutStats > 30,
+        lastLoadedAt: latestStat.updatedAt.toISOString(),
+        daysWithoutStats
+    };
+}
 export async function updateMonthlyStatistic(id, data, actor) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing)
@@ -616,67 +681,73 @@ export async function updateMonthlyStatistic(id, data, actor) {
         if (conteoCultivoPlacasContaminados != null)
             porcentajeConteoPlacasContaminado = (conteoCultivoPlacasContaminados * 100) / casosClinicosMastitis;
     }
-    const result = await prisma.monthlyStatistic.update({
-        where: { id },
-        data: {
-            ...data,
-            ternerosMuertosPeriparto: data.ternerosMuertosPeriparto !== undefined ? data.ternerosMuertosPeriparto : existing.ternerosMuertosPeriparto,
-            ternerosMachosNacidosVivos: data.ternerosMachosNacidosVivos !== undefined ? data.ternerosMachosNacidosVivos : existing.ternerosMachosNacidosVivos,
-            ternerasHembrasNacidasVivas: data.ternerasHembrasNacidasVivas !== undefined ? data.ternerasHembrasNacidasVivas : existing.ternerasHembrasNacidasVivas,
-            cantNacimientosMellizos: data.cantNacimientosMellizos !== undefined ? data.cantNacimientosMellizos : existing.cantNacimientosMellizos,
-            ternerosMuertosGuachera: data.ternerosMuertosGuachera !== undefined ? data.ternerosMuertosGuachera : existing.ternerosMuertosGuachera,
-            ternerosIngresadosGuachera: data.ternerosIngresadosGuachera !== undefined ? data.ternerosIngresadosGuachera : existing.ternerosIngresadosGuachera,
-            cantTernerasHembrasIngRecria: data.cantTernerasHembrasIngRecria !== undefined ? data.cantTernerasHembrasIngRecria : existing.cantTernerasHembrasIngRecria,
-            cantHembrasRecriaHastaServMuertas: data.cantHembrasRecriaHastaServMuertas !== undefined ? data.cantHembrasRecriaHastaServMuertas : existing.cantHembrasRecriaHastaServMuertas,
-            edadVaquillonasPrimerServicioMeses: data.edadVaquillonasPrimerServicioMeses !== undefined ? data.edadVaquillonasPrimerServicioMeses : existing.edadVaquillonasPrimerServicioMeses,
-            cantVacasMuertasMes: data.cantVacasMuertasMes !== undefined ? data.cantVacasMuertasMes : existing.cantVacasMuertasMes,
-            cantVacasVendidasMes: data.cantVacasVendidasMes !== undefined ? data.cantVacasVendidasMes : existing.cantVacasVendidasMes,
-            partosTotales,
-            vacasTotales,
-            promedioLitrosVaca,
-            porcentajePartoVaquillonas,
-            porcentajeNatimortos,
-            totalTernerosNacidosVivos,
-            porcentajeTernerosMuertosGuacheraMes,
-            porcentajeMortandadRecriaMes,
-            refugoTotalVacas,
-            porcentajeRefugoVacasMes,
-            porcentajeRefugoVacasMensual,
-            porcentajeVacasMuertasMes,
-            porcentajeVacasMuertasMensual,
-            porcentajeVacasVendidas,
-            CantVaquillonasPrenadas: data.CantVaquillonasPrenadas !== undefined ? data.CantVaquillonasPrenadas : existing.CantVaquillonasPrenadas,
-            CantVacasPrenadas: data.CantVacasPrenadas !== undefined ? data.CantVacasPrenadas : existing.CantVacasPrenadas,
-            CantVacasAbortadas: data.CantVacasAbortadas !== undefined ? data.CantVacasAbortadas : existing.CantVacasAbortadas,
-            cantVaquillonasAbortadas: data.cantVaquillonasAbortadas !== undefined ? data.cantVaquillonasAbortadas : existing.cantVaquillonasAbortadas,
-            diasIPPS: data.diasIPPS !== undefined ? data.diasIPPS : existing.diasIPPS,
-            porcentajeIPPS: data.porcentajeIPPS !== undefined ? data.porcentajeIPPS : existing.porcentajeIPPS,
-            cantVacasMetritis: data.cantVacasMetritis !== undefined ? data.cantVacasMetritis : existing.cantVacasMetritis,
-            CantVacasRetencionPlacenta: data.CantVacasRetencionPlacenta !== undefined ? data.CantVacasRetencionPlacenta : existing.CantVacasRetencionPlacenta,
-            cantVacasCaidas: data.cantVacasCaidas !== undefined ? data.cantVacasCaidas : existing.cantVacasCaidas,
-            diasDeLeche: data.diasDeLeche !== undefined ? data.diasDeLeche : existing.diasDeLeche,
-            conteoCelulasSomaticas: data.conteoCelulasSomaticas !== undefined ? data.conteoCelulasSomaticas : existing.conteoCelulasSomaticas,
-            conteoBacteriasTotales: data.conteoBacteriasTotales !== undefined ? data.conteoBacteriasTotales : existing.conteoBacteriasTotales,
-            casosClinicosMastitis: data.casosClinicosMastitis !== undefined ? data.casosClinicosMastitis : existing.casosClinicosMastitis,
-            conteoCultivoPlacasPositivo: data.conteoCultivoPlacasPositivo !== undefined ? data.conteoCultivoPlacasPositivo : existing.conteoCultivoPlacasPositivo,
-            conteoCultivoPlacasContaminados: data.conteoCultivoPlacasContaminados !== undefined ? data.conteoCultivoPlacasContaminados : existing.conteoCultivoPlacasContaminados,
-            porcentajeVacasPrenadas, animalesPrenados, porcentajeAbortoVacasMes, porcentajeVaquillonasAbortadasMes,
-            porcentajeMetritisVacas, porcentajeRetencionPlacentaVacas, porcentajeVacasCaida, crecimientoAnual, crecimientoFuturo,
-            porcentajeCasosClinicosMastitis, conteoCultivoPlacasNegativas, porcentajeConteoPlacasPositivo,
-            porcentajeConteoPlacasNegativo, porcentajeConteoPlacasContaminado
-        }
+    return withYearlyStatsLock(existing.tamboId, year, async (tx) => {
+        const result = await tx.monthlyStatistic.update({
+            where: { id },
+            data: {
+                ...data,
+                ternerosMuertosPeriparto: data.ternerosMuertosPeriparto !== undefined ? data.ternerosMuertosPeriparto : existing.ternerosMuertosPeriparto,
+                ternerosMachosNacidosVivos: data.ternerosMachosNacidosVivos !== undefined ? data.ternerosMachosNacidosVivos : existing.ternerosMachosNacidosVivos,
+                ternerasHembrasNacidasVivas: data.ternerasHembrasNacidasVivas !== undefined ? data.ternerasHembrasNacidasVivas : existing.ternerasHembrasNacidasVivas,
+                cantNacimientosMellizos: data.cantNacimientosMellizos !== undefined ? data.cantNacimientosMellizos : existing.cantNacimientosMellizos,
+                ternerosMuertosGuachera: data.ternerosMuertosGuachera !== undefined ? data.ternerosMuertosGuachera : existing.ternerosMuertosGuachera,
+                ternerosIngresadosGuachera: data.ternerosIngresadosGuachera !== undefined ? data.ternerosIngresadosGuachera : existing.ternerosIngresadosGuachera,
+                cantTernerasHembrasIngRecria: data.cantTernerasHembrasIngRecria !== undefined ? data.cantTernerasHembrasIngRecria : existing.cantTernerasHembrasIngRecria,
+                cantHembrasRecriaHastaServMuertas: data.cantHembrasRecriaHastaServMuertas !== undefined ? data.cantHembrasRecriaHastaServMuertas : existing.cantHembrasRecriaHastaServMuertas,
+                edadVaquillonasPrimerServicioMeses: data.edadVaquillonasPrimerServicioMeses !== undefined ? data.edadVaquillonasPrimerServicioMeses : existing.edadVaquillonasPrimerServicioMeses,
+                cantVacasMuertasMes: data.cantVacasMuertasMes !== undefined ? data.cantVacasMuertasMes : existing.cantVacasMuertasMes,
+                cantVacasVendidasMes: data.cantVacasVendidasMes !== undefined ? data.cantVacasVendidasMes : existing.cantVacasVendidasMes,
+                partosTotales,
+                vacasTotales,
+                promedioLitrosVaca,
+                porcentajePartoVaquillonas,
+                porcentajeNatimortos,
+                totalTernerosNacidosVivos,
+                porcentajeTernerosMuertosGuacheraMes,
+                porcentajeMortandadRecriaMes,
+                refugoTotalVacas,
+                porcentajeRefugoVacasMes,
+                porcentajeRefugoVacasMensual,
+                porcentajeVacasMuertasMes,
+                porcentajeVacasMuertasMensual,
+                porcentajeVacasVendidas,
+                CantVaquillonasPrenadas: data.CantVaquillonasPrenadas !== undefined ? data.CantVaquillonasPrenadas : existing.CantVaquillonasPrenadas,
+                CantVacasPrenadas: data.CantVacasPrenadas !== undefined ? data.CantVacasPrenadas : existing.CantVacasPrenadas,
+                CantVacasAbortadas: data.CantVacasAbortadas !== undefined ? data.CantVacasAbortadas : existing.CantVacasAbortadas,
+                cantVaquillonasAbortadas: data.cantVaquillonasAbortadas !== undefined ? data.cantVaquillonasAbortadas : existing.cantVaquillonasAbortadas,
+                diasIPPS: data.diasIPPS !== undefined ? data.diasIPPS : existing.diasIPPS,
+                porcentajeIPPS: data.porcentajeIPPS !== undefined ? data.porcentajeIPPS : existing.porcentajeIPPS,
+                cantVacasMetritis: data.cantVacasMetritis !== undefined ? data.cantVacasMetritis : existing.cantVacasMetritis,
+                CantVacasRetencionPlacenta: data.CantVacasRetencionPlacenta !== undefined ? data.CantVacasRetencionPlacenta : existing.CantVacasRetencionPlacenta,
+                cantVacasCaidas: data.cantVacasCaidas !== undefined ? data.cantVacasCaidas : existing.cantVacasCaidas,
+                diasDeLeche: data.diasDeLeche !== undefined ? data.diasDeLeche : existing.diasDeLeche,
+                conteoCelulasSomaticas: data.conteoCelulasSomaticas !== undefined ? data.conteoCelulasSomaticas : existing.conteoCelulasSomaticas,
+                conteoBacteriasTotales: data.conteoBacteriasTotales !== undefined ? data.conteoBacteriasTotales : existing.conteoBacteriasTotales,
+                casosClinicosMastitis: data.casosClinicosMastitis !== undefined ? data.casosClinicosMastitis : existing.casosClinicosMastitis,
+                conteoCultivoPlacasPositivo: data.conteoCultivoPlacasPositivo !== undefined ? data.conteoCultivoPlacasPositivo : existing.conteoCultivoPlacasPositivo,
+                conteoCultivoPlacasContaminados: data.conteoCultivoPlacasContaminados !== undefined ? data.conteoCultivoPlacasContaminados : existing.conteoCultivoPlacasContaminados,
+                porcentajeVacasPrenadas, animalesPrenados, porcentajeAbortoVacasMes, porcentajeVaquillonasAbortadasMes,
+                porcentajeMetritisVacas, porcentajeRetencionPlacentaVacas, porcentajeVacasCaida, crecimientoAnual, crecimientoFuturo,
+                porcentajeCasosClinicosMastitis, conteoCultivoPlacasNegativas, porcentajeConteoPlacasPositivo,
+                porcentajeConteoPlacasNegativo, porcentajeConteoPlacasContaminado
+            }
+        });
+        await syncYearlyProjections(tx, existing.tamboId, year);
+        return tx.monthlyStatistic.findUniqueOrThrow({
+            where: { id: result.id }
+        });
     });
-    await syncYearlyProjections(existing.tamboId, year);
-    return result;
 }
 export async function deleteMonthlyStatistic(id, actor) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Estadística mensual no encontrada" };
     await checkOwnership(existing.tamboId, actor);
-    const result = await prisma.monthlyStatistic.delete({
-        where: { id }
+    return withYearlyStatsLock(existing.tamboId, existing.year, async (tx) => {
+        const result = await tx.monthlyStatistic.delete({
+            where: { id }
+        });
+        await syncYearlyProjections(tx, existing.tamboId, existing.year);
+        return result;
     });
-    await syncYearlyProjections(existing.tamboId, existing.year);
-    return result;
 }

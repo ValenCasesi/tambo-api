@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { upsertMonthlyStatisticHandler, getAnnualStatisticsHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler } from "../controller/monthly-stats.controller.js";
+import { upsertMonthlyStatisticHandler, getAnnualStatisticsHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler, getMyMonthlyStatsActivitySummaryHandler } from "../controller/monthly-stats.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
@@ -279,6 +279,7 @@ const router = Router();
  *         description: Tambo not found
  */
 router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upsertMonthlyStatisticHandler);
+router.get("/me/activity-summary", requireAuth, requireRole(["PRODUCTOR"]), getMyMonthlyStatsActivitySummaryHandler);
 /**
  * @openapi
  * /api/stats/{tamboId}/annual/{year}:

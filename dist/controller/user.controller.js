@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
+const optionalBillingPlanIdSchema = z.preprocess((value) => value === "" ? null : value, z.string().uuid().nullable().optional());
 const createUserSchema = z.object({
     firstName: z.string().min(1),
     lastName: z.string().min(1),
@@ -12,6 +13,7 @@ const createUserSchema = z.object({
     razonSocial: z.string().min(1, "La Razón Social es obligatoria"),
     localidad: z.string().min(1, "La Localidad es obligatoria"),
     imageUrl: z.string().url().optional(),
+    billingPlanId: optionalBillingPlanIdSchema,
 });
 export async function createUserHandler(req, res) {
     try {
@@ -50,6 +52,7 @@ const updateUserSchema = z.object({
     razonSocial: z.string().optional().nullable(),
     localidad: z.string().optional().nullable(),
     imageUrl: z.string().url().optional().nullable(),
+    billingPlanId: optionalBillingPlanIdSchema,
 });
 export async function updateUserHandler(req, res) {
     try {
@@ -87,8 +90,11 @@ export async function updateUserHandler(req, res) {
 }
 export async function getAllUsersHandler(req, res) {
     try {
-        const status = req.query.status;
-        const users = await getAllUsers(status);
+        const users = await getAllUsers({
+            status: req.query.status,
+            search: req.query.search,
+            localidad: req.query.localidad
+        });
         return res.status(200).json(users);
     }
     catch (err) {
