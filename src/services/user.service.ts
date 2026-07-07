@@ -292,7 +292,9 @@ export async function getAllUsers(filters: UserFilters = {}) {
 }
 
 async function validateBillingPlanForUser(role: Role, billingPlanId?: string | null) {
-    if (!billingPlanId || role === "ADMIN") return null;
+    // Los productores ya no admiten plan asignado manualmente: el plan se
+    // calcula automáticamente por tambo según sus VO al generar las cuotas
+    if (!billingPlanId || role !== "EMPRESA") return null;
 
     const plan = await prisma.billingPlan.findUnique({ where: { id: billingPlanId } });
     if (!plan) throw { status: 404, message: "Plan no encontrado" };

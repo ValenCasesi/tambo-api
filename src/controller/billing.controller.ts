@@ -11,6 +11,7 @@ import {
     listMyBillingInstallments,
     markBillingInstallmentPaid,
     markBillingInstallmentPending,
+    previewProducerBilling,
     updateBillingPlan,
 } from "../services/billing.service.js";
 
@@ -26,6 +27,7 @@ const planSchema = z.object({
     fixedPrice: z.coerce.number().min(0).nullable().optional(),
     isActive: z.coerce.boolean().optional(),
     isDefault: z.coerce.boolean().optional(),
+    isBasic: z.coerce.boolean().optional(),
 });
 
 const updatePlanSchema = planSchema.partial();
@@ -49,6 +51,10 @@ const listInstallmentsSchema = z.object({
 const listMyInstallmentsSchema = listInstallmentsSchema.pick({
     period: true,
     status: true,
+});
+
+const previewBillingSchema = z.object({
+    period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
 });
 
 export async function getBillingPlansHandler(_req: Request, res: Response) {
@@ -109,6 +115,20 @@ export async function generateBillingInstallmentsHandler(req: Request, res: Resp
         if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
         if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("generateBillingInstallmentsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function previewProducerBillingHandler(req: Request, res: Response) {
+    try {
+        const userId = req.params.userId as string;
+        const parsed = previewBillingSchema.parse(req.query);
+        const preview = await previewProducerBilling(userId, parsed.period);
+        return res.status(200).json(preview);
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("previewProducerBillingHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

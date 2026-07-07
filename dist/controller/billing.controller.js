@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentPaid, markBillingInstallmentPending, updateBillingPlan, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -12,6 +12,7 @@ const planSchema = z.object({
     fixedPrice: z.coerce.number().min(0).nullable().optional(),
     isActive: z.coerce.boolean().optional(),
     isDefault: z.coerce.boolean().optional(),
+    isBasic: z.coerce.boolean().optional(),
 });
 const updatePlanSchema = planSchema.partial();
 const generateSchema = z.object({
@@ -31,6 +32,9 @@ const listInstallmentsSchema = z.object({
 const listMyInstallmentsSchema = listInstallmentsSchema.pick({
     period: true,
     status: true,
+});
+const previewBillingSchema = z.object({
+    period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
 });
 export async function getBillingPlansHandler(_req, res) {
     try {
@@ -98,6 +102,22 @@ export async function generateBillingInstallmentsHandler(req, res) {
         if (err?.issues)
             return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("generateBillingInstallmentsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function previewProducerBillingHandler(req, res) {
+    try {
+        const userId = req.params.userId;
+        const parsed = previewBillingSchema.parse(req.query);
+        const preview = await previewProducerBilling(userId, parsed.period);
+        return res.status(200).json(preview);
+    }
+    catch (err) {
+        if (err?.status && err?.message)
+            return res.status(err.status).json({ error: err.message });
+        if (err?.issues)
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("previewProducerBillingHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
