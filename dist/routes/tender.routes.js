@@ -65,7 +65,7 @@ const router = Router();
  *          example: "Entrega en dos partes"
  *    ProposalInput:
  *      type: object
- *      required: [companyId, pricePerUnit, paymentMethod, logisticsConditions, offerValidity]
+ *      required: [companyId, pricePerUnit, paymentMethod, logisticsConditions]
  *      properties:
  *        companyId:
  *          type: string
@@ -79,9 +79,6 @@ const router = Router();
  *        logisticsConditions:
  *          type: string
  *          example: "Flete incluido hasta 200km"
- *        offerValidity:
- *          type: string
- *          example: "30 días desde la fecha de envío"
  */
 // ==========================================
 // TENDER ROUTES
@@ -397,8 +394,6 @@ router.post("/:id/proposals", requireAuth, requireRole(["EMPRESA"]), createPropo
  *              paymentMethod:
  *                type: string
  *              logisticsConditions:
- *                type: string
- *              offerValidity:
  *                type: string
  *     responses:
  *       200:

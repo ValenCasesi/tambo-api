@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { BillingCycle } from "@prisma/client";
 import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 
@@ -20,6 +21,8 @@ const createUserSchema = z.object({
     localidad: z.string().min(1, "La Localidad es obligatoria"),
     imageUrl: z.string().url().optional(),
     billingPlanId: optionalBillingPlanIdSchema,
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+    billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
 });
 
 export async function createUserHandler(req: Request, res: Response) {
@@ -62,6 +65,8 @@ const updateUserSchema = z.object({
     localidad: z.string().optional().nullable(),
     imageUrl: z.string().url().optional().nullable(),
     billingPlanId: optionalBillingPlanIdSchema,
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+    billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
 });
 
 export async function updateUserHandler(req: Request, res: Response) {
@@ -74,6 +79,9 @@ export async function updateUserHandler(req: Request, res: Response) {
             }
             delete req.body.role;
             delete req.body.email;
+            delete req.body.billingPlanId;
+            delete req.body.billingCycle;
+            delete req.body.billingDiscountPercent;
         }
 
         let imageUrl = undefined;

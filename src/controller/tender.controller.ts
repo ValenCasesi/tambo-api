@@ -57,7 +57,7 @@ const proposalSchema = z.object({
     pricePerUnit: z.coerce.number().positive("El precio debe ser positivo"),
     paymentMethod: z.string().min(1, "La forma de pago es requerida"),
     logisticsConditions: z.string().min(1, "Las condiciones logísticas son requeridas"),
-    offerValidity: z.string().min(1, "La vigencia de la oferta es requerida")
+    offerValidity: z.string().min(1, "La vigencia de la oferta es requerida").optional()
 });
 
 // ==========================================

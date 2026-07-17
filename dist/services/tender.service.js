@@ -367,7 +367,7 @@ export async function createProposal(tenderId, data) {
             pricePerUnit: data.pricePerUnit,
             paymentMethod: data.paymentMethod,
             logisticsConditions: data.logisticsConditions,
-            offerValidity: data.offerValidity,
+            offerValidity: data.offerValidity || "No especificada",
             isSubmitted: true,
             submittedAt: now
         }
@@ -411,7 +411,10 @@ export async function getProposals(tenderId) {
         include: {
             company: { select: { id: true, firstName: true, lastName: true } }
         },
-        orderBy: { pricePerUnit: "asc" }
+        orderBy: [
+            { pricePerUnit: "asc" },
+            { submittedAt: "asc" }
+        ]
     });
 }
 export async function getMyProposal(tenderId, companyId) {

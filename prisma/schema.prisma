@@ -70,6 +70,11 @@ enum BillingPlanType {
   FIXED_ARS
 }
 
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
 enum BillingInstallmentStatus {
   PENDING
   PAID
@@ -94,6 +99,8 @@ model User {
   status        EntityStatus @default(ACTIVE)
   termsAccepted Boolean      @default(false)
   billingPlanId String?
+  billingCycle BillingCycle @default(MONTHLY)
+  billingDiscountPercent Decimal @default(0) @db.Decimal(5, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -474,13 +481,20 @@ model BillingInstallment {
   planId String?
 
   period  String
+  periodEnd String?
   dueDate DateTime
   status  BillingInstallmentStatus @default(PENDING)
   paidAt  DateTime?
 
   amount           Decimal  @db.Decimal(12, 2)
+  grossAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  discountPercentSnapshot Decimal @default(0) @db.Decimal(5, 2)
+  discountAmount   Decimal  @default(0) @db.Decimal(12, 2)
   sigleaLiterPrice Decimal? @db.Decimal(12, 2)
   voUsed           Decimal? @db.Decimal(10, 2)
+  billingCycleSnapshot BillingCycle @default(MONTHLY)
+  isInvoiced       Boolean  @default(false)
+  invoicedAt       DateTime?
 
   planNameSnapshot     String
   planTypeSnapshot     BillingPlanType

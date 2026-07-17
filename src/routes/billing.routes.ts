@@ -8,6 +8,7 @@ import {
     getMyBillingSummaryHandler,
     listBillingInstallmentsHandler,
     listMyBillingInstallmentsHandler,
+    markBillingInstallmentInvoicedHandler,
     markBillingInstallmentPaidHandler,
     markBillingInstallmentPendingHandler,
     previewProducerBillingHandler,
@@ -30,5 +31,6 @@ router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), pr
 router.post("/cuotas/generate", requireAuth, requireRole([Role.ADMIN]), generateBillingInstallmentsHandler);
 router.put("/cuotas/:id/pay", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPaidHandler);
 router.put("/cuotas/:id/pending", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPendingHandler);
+router.put("/cuotas/:id/invoice", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentInvoicedHandler);
 
 export default router;

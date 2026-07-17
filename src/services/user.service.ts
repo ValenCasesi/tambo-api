@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { BillingCycle, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
@@ -15,6 +15,8 @@ type CreateUserInput = {
     localidad?: string | null;
     imageUrl?: string | null;
     billingPlanId?: string | null;
+    billingCycle?: BillingCycle | string;
+    billingDiscountPercent?: number | null;
 };
 
 type UserFilters = {
@@ -97,7 +99,21 @@ const scoreSearchMatch = (value: string, query: string) => {
 };
 
 export async function createUser(input: CreateUserInput) {
-    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId } = input;
+    const {
+        email,
+        cuit,
+        razonSocial,
+        localidad,
+        password,
+        role = "PRODUCTOR",
+        firstName,
+        lastName,
+        phone,
+        imageUrl,
+        billingPlanId,
+        billingCycle = BillingCycle.MONTHLY,
+        billingDiscountPercent = 0,
+    } = input;
 
     // check email uniqueness
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -128,6 +144,8 @@ export async function createUser(input: CreateUserInput) {
             localidad,
             imageUrl,
             billingPlanId: safeBillingPlanId,
+            billingCycle: billingCycle as BillingCycle,
+            billingDiscountPercent: billingDiscountPercent ?? 0,
             status: isPending ? "PENDING" : "ACTIVE"
         },
     });
@@ -176,10 +194,12 @@ type UpdateUserInput = {
     localidad?: string | null;
     imageUrl?: string | null;
     billingPlanId?: string | null;
+    billingCycle?: BillingCycle | string;
+    billingDiscountPercent?: number | null;
 };
 
 export async function updateUser(input: UpdateUserInput) {
-    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent } = input;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
@@ -219,6 +239,8 @@ export async function updateUser(input: UpdateUserInput) {
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
+            ...(billingCycle !== undefined && { billingCycle: billingCycle as BillingCycle }),
+            ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
             ...billingPlanUpdate,
         },
         include: {

@@ -9,6 +9,7 @@ import {
     getMyBillingSummary,
     listBillingInstallments,
     listMyBillingInstallments,
+    markBillingInstallmentInvoiced,
     markBillingInstallmentPaid,
     markBillingInstallmentPending,
     previewProducerBilling,
@@ -178,6 +179,18 @@ export async function markBillingInstallmentPendingHandler(req: Request, res: Re
     } catch (err: any) {
         if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
         console.error("markBillingInstallmentPendingHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function markBillingInstallmentInvoicedHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const cuota = await markBillingInstallmentInvoiced(id);
+        return res.status(200).json(cuota);
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        console.error("markBillingInstallmentInvoicedHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

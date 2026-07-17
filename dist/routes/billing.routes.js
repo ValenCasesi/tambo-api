@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
-import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, updateBillingPlanHandler, } from "../controller/billing.controller.js";
+import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, updateBillingPlanHandler, } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 router.get("/billing/me/summary", requireAuth, getMyBillingSummaryHandler);
@@ -14,4 +14,5 @@ router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), pr
 router.post("/cuotas/generate", requireAuth, requireRole([Role.ADMIN]), generateBillingInstallmentsHandler);
 router.put("/cuotas/:id/pay", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPaidHandler);
 router.put("/cuotas/:id/pending", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPendingHandler);
+router.put("/cuotas/:id/invoice", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentInvoicedHandler);
 export default router;

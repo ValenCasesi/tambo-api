@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -172,6 +172,19 @@ export async function markBillingInstallmentPendingHandler(req, res) {
         if (err?.status && err?.message)
             return res.status(err.status).json({ error: err.message });
         console.error("markBillingInstallmentPendingHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function markBillingInstallmentInvoicedHandler(req, res) {
+    try {
+        const id = req.params.id;
+        const cuota = await markBillingInstallmentInvoiced(id);
+        return res.status(200).json(cuota);
+    }
+    catch (err) {
+        if (err?.status && err?.message)
+            return res.status(err.status).json({ error: err.message });
+        console.error("markBillingInstallmentInvoicedHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

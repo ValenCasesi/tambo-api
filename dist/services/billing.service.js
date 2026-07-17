@@ -1,4 +1,4 @@
-import { BillingInstallmentStatus, BillingPlanType, EntityStatus, Role } from "@prisma/client";
+import { BillingCycle, BillingInstallmentStatus, BillingPlanType, EntityStatus, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 const BILLING_ACTIVITY_WINDOW_MONTHS = 3;
 function toNumber(value) {
@@ -8,6 +8,38 @@ function toNumber(value) {
 }
 function round2(value) {
     return Math.round(value * 100) / 100;
+}
+function clampDiscountPercent(value) {
+    const percent = toNumber(value) ?? 0;
+    return Math.min(100, Math.max(0, percent));
+}
+function getBillingCycle(value) {
+    return value === BillingCycle.ANNUAL ? BillingCycle.ANNUAL : BillingCycle.MONTHLY;
+}
+function getCycleMultiplier(cycle) {
+    return cycle === BillingCycle.ANNUAL ? 12 : 1;
+}
+function addMonthsToPeriod(period, monthsToAdd) {
+    let year = Number(period.slice(0, 4));
+    let month = Number(period.slice(4, 6)) + monthsToAdd;
+    while (month > 12) {
+        month -= 12;
+        year += 1;
+    }
+    while (month < 1) {
+        month += 12;
+        year -= 1;
+    }
+    return `${year}${String(month).padStart(2, "0")}`;
+}
+function applyDiscount(grossAmount, discountPercent) {
+    const discountAmount = round2(grossAmount * discountPercent / 100);
+    return {
+        grossAmount: round2(grossAmount),
+        discountPercent: round2(discountPercent),
+        discountAmount,
+        amount: round2(grossAmount - discountAmount),
+    };
 }
 function todayAtStart() {
     const now = new Date();
@@ -36,13 +68,20 @@ function serializeInstallmentItem(item) {
     };
 }
 function serializeInstallment(installment) {
+    const amount = toNumber(installment.amount);
+    const rawGrossAmount = toNumber(installment.grossAmount);
+    const grossAmount = rawGrossAmount && rawGrossAmount > 0 ? rawGrossAmount : amount;
     return {
         ...installment,
-        amount: toNumber(installment.amount),
+        amount,
+        grossAmount,
+        discountPercentSnapshot: toNumber(installment.discountPercentSnapshot) ?? 0,
+        discountAmount: toNumber(installment.discountAmount) ?? 0,
         sigleaLiterPrice: toNumber(installment.sigleaLiterPrice),
         voUsed: toNumber(installment.voUsed),
         sigleaLitersSnapshot: toNumber(installment.sigleaLitersSnapshot),
         fixedPriceSnapshot: toNumber(installment.fixedPriceSnapshot),
+        billingCycleSnapshot: installment.billingCycleSnapshot ?? BillingCycle.MONTHLY,
         effectiveStatus: getEffectiveStatus(installment.status, installment.dueDate),
         plan: installment.plan ? serializePlan(installment.plan) : null,
         items: Array.isArray(installment.items)
@@ -281,11 +320,21 @@ async function findCompanyPlan() {
     });
 }
 async function createInstallmentForUser(user, input, producerPlans) {
-    const existing = await prisma.billingInstallment.findUnique({
-        where: { userId_period: { userId: user.id, period: input.period } },
+    const billingCycle = getBillingCycle(user.billingCycle);
+    const cycleMultiplier = getCycleMultiplier(billingCycle);
+    const periodEnd = billingCycle === BillingCycle.ANNUAL ? addMonthsToPeriod(input.period, 11) : null;
+    const existing = await prisma.billingInstallment.findFirst({
+        where: {
+            userId: user.id,
+            period: { lte: periodEnd ?? input.period },
+            OR: [
+                { periodEnd: { gte: input.period } },
+                { periodEnd: null, period: { gte: input.period } },
+            ],
+        },
     });
     if (existing) {
-        return { status: "SKIPPED_DUPLICATE", userId: user.id };
+        return { status: "SKIPPED_OVERLAP", userId: user.id };
     }
     if (!input.sigleaLiterPrice || input.sigleaLiterPrice <= 0) {
         return { status: "SKIPPED_NO_SIGLEA_PRICE", userId: user.id };
@@ -379,7 +428,7 @@ async function createInstallmentForUser(user, input, producerPlans) {
         }
         header = {
             planId: plan.id,
-            amount: Number(plan.fixedPrice) * input.sigleaLiterPrice,
+            amount: round2(Number(plan.fixedPrice) * input.sigleaLiterPrice),
             voUsed: null,
             planNameSnapshot: plan.name,
             planTypeSnapshot: plan.planType,
@@ -391,16 +440,37 @@ async function createInstallmentForUser(user, input, producerPlans) {
     else {
         return { status: "SKIPPED_NO_PLAN", userId: user.id, tambos: [] };
     }
+    if (cycleMultiplier > 1) {
+        for (const item of items) {
+            item.amount = round2(item.amount * cycleMultiplier);
+            item.sigleaLitersSnapshot = item.sigleaLitersSnapshot === null
+                ? null
+                : round2(item.sigleaLitersSnapshot * cycleMultiplier);
+        }
+        header.amount = round2(header.amount * cycleMultiplier);
+        header.sigleaLitersSnapshot = header.sigleaLitersSnapshot === null
+            ? null
+            : round2(header.sigleaLitersSnapshot * cycleMultiplier);
+        header.fixedPriceSnapshot = header.fixedPriceSnapshot === null
+            ? null
+            : round2(header.fixedPriceSnapshot * cycleMultiplier);
+    }
+    const discount = applyDiscount(header.amount, clampDiscountPercent(user.billingDiscountPercent));
     try {
         const installment = await prisma.billingInstallment.create({
             data: {
                 userId: user.id,
                 planId: header.planId,
                 period: input.period,
+                periodEnd,
                 dueDate: input.dueDate,
-                amount: header.amount,
+                amount: discount.amount,
+                grossAmount: discount.grossAmount,
+                discountPercentSnapshot: discount.discountPercent,
+                discountAmount: discount.discountAmount,
                 sigleaLiterPrice: input.sigleaLiterPrice,
                 voUsed: header.voUsed,
+                billingCycleSnapshot: billingCycle,
                 planNameSnapshot: header.planNameSnapshot,
                 planTypeSnapshot: header.planTypeSnapshot,
                 targetRoleSnapshot: header.targetRoleSnapshot,
@@ -445,6 +515,7 @@ export async function generateBillingInstallments(input) {
         skippedNoPlan: [],
         skippedNoBasicPlan: [],
         skippedNoSigleaPrice: [],
+        skippedOverlaps: [],
     };
     for (const user of users) {
         const outcome = await createInstallmentForUser(user, input, producerPlans);
@@ -458,6 +529,8 @@ export async function generateBillingInstallments(input) {
             result.skippedNoBasicPlan.push(outcome.userId);
         if (outcome.status === "SKIPPED_NO_SIGLEA_PRICE")
             result.skippedNoSigleaPrice.push(outcome.userId);
+        if (outcome.status === "SKIPPED_OVERLAP")
+            result.skippedOverlaps.push(outcome.userId);
     }
     return {
         ...result,
@@ -467,6 +540,7 @@ export async function generateBillingInstallments(input) {
             skippedNoPlan: result.skippedNoPlan.length,
             skippedNoBasicPlan: result.skippedNoBasicPlan.length,
             skippedNoSigleaPrice: result.skippedNoSigleaPrice.length,
+            skippedOverlaps: result.skippedOverlaps.length,
         },
     };
 }
@@ -549,7 +623,13 @@ export async function listBillingInstallments(filters) {
     const dbStatus = filters.status === "OVERDUE" ? BillingInstallmentStatus.PENDING : filters.status;
     const installments = await prisma.billingInstallment.findMany({
         where: {
-            ...(filters.period ? { period: filters.period } : {}),
+            ...(filters.period ? {
+                period: { lte: filters.period },
+                OR: [
+                    { periodEnd: { gte: filters.period } },
+                    { periodEnd: null, period: filters.period },
+                ],
+            } : {}),
             ...(dbStatus ? { status: dbStatus } : {}),
             ...(filters.userId ? { userId: filters.userId } : {}),
             ...(filters.role ? { user: { role: filters.role } } : {}),
@@ -609,6 +689,26 @@ export async function markBillingInstallmentPending(id) {
         data: {
             status: BillingInstallmentStatus.PENDING,
             paidAt: null,
+        },
+        include: {
+            user: {
+                select: { id: true, firstName: true, lastName: true, email: true, role: true, razonSocial: true },
+            },
+            plan: true,
+            items: { orderBy: { createdAt: "asc" } },
+        },
+    });
+    return serializeInstallment(installment);
+}
+export async function markBillingInstallmentInvoiced(id) {
+    const existing = await prisma.billingInstallment.findUnique({ where: { id } });
+    if (!existing)
+        throw { status: 404, message: "Cuota no encontrada" };
+    const installment = await prisma.billingInstallment.update({
+        where: { id },
+        data: {
+            isInvoiced: true,
+            invoicedAt: new Date(),
         },
         include: {
             user: {
