@@ -1,4 +1,4 @@
-import { BillingCycle, Role } from "@prisma/client";
+import { BillingCycle, BillingPaymentMethod, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
@@ -17,6 +17,7 @@ type CreateUserInput = {
     billingPlanId?: string | null;
     billingCycle?: BillingCycle | string;
     billingDiscountPercent?: number | null;
+    billingPaymentMethod?: BillingPaymentMethod | string;
 };
 
 type UserFilters = {
@@ -115,6 +116,7 @@ export async function createUser(input: CreateUserInput) {
         billingPlanId,
         billingCycle = BillingCycle.MONTHLY,
         billingDiscountPercent = 0,
+        billingPaymentMethod = BillingPaymentMethod.TRANSFER,
     } = input;
 
     // check email uniqueness
@@ -148,6 +150,7 @@ export async function createUser(input: CreateUserInput) {
             billingPlanId: safeBillingPlanId,
             billingCycle: billingCycle as BillingCycle,
             billingDiscountPercent: billingDiscountPercent ?? 0,
+            billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod,
             status: isPending ? "PENDING" : "ACTIVE"
         },
     });
@@ -198,10 +201,11 @@ type UpdateUserInput = {
     billingPlanId?: string | null;
     billingCycle?: BillingCycle | string;
     billingDiscountPercent?: number | null;
+    billingPaymentMethod?: BillingPaymentMethod | string;
 };
 
 export async function updateUser(input: UpdateUserInput) {
-    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent, billingPaymentMethod } = input;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
@@ -243,6 +247,7 @@ export async function updateUser(input: UpdateUserInput) {
             ...(hashed && { password: hashed }),
             ...(billingCycle !== undefined && { billingCycle: billingCycle as BillingCycle }),
             ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
+            ...(billingPaymentMethod !== undefined && { billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod }),
             ...billingPlanUpdate,
         },
         include: {

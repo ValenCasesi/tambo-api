@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
-import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, updateBillingPlanHandler, } from "../controller/billing.controller.js";
+import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, updateBillingPlanHandler, updateBillingSettingsHandler, } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 router.get("/billing/me/summary", requireAuth, getMyBillingSummaryHandler);
@@ -9,6 +9,8 @@ router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHand
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
 router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPlanHandler);
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
+router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
+router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
 router.get("/cuotas", requireAuth, requireRole([Role.ADMIN]), listBillingInstallmentsHandler);
 router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), previewProducerBillingHandler);
 router.post("/cuotas/generate", requireAuth, requireRole([Role.ADMIN]), generateBillingInstallmentsHandler);

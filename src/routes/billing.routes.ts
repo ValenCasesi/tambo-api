@@ -5,6 +5,7 @@ import {
     deleteBillingPlanHandler,
     generateBillingInstallmentsHandler,
     getBillingPlansHandler,
+    getBillingSettingsHandler,
     getMyBillingSummaryHandler,
     listBillingInstallmentsHandler,
     listMyBillingInstallmentsHandler,
@@ -13,6 +14,7 @@ import {
     markBillingInstallmentPendingHandler,
     previewProducerBillingHandler,
     updateBillingPlanHandler,
+    updateBillingSettingsHandler,
 } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 
@@ -25,6 +27,8 @@ router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHand
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
 router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPlanHandler);
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
+router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
+router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
 
 router.get("/cuotas", requireAuth, requireRole([Role.ADMIN]), listBillingInstallmentsHandler);
 router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), previewProducerBillingHandler);

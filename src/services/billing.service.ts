@@ -1,4 +1,4 @@
-import { BillingCycle, BillingInstallmentStatus, BillingPlanType, EntityStatus, Prisma, Role } from "@prisma/client";
+import { BillingCycle, BillingInstallmentStatus, BillingPaymentMethod, BillingPlanType, EntityStatus, Prisma, Role } from "@prisma/client";
 import type { BillingPlan } from "@prisma/client";
 import prisma from "../prisma/client.js";
 
@@ -38,6 +38,8 @@ type ListInstallmentsFilters = {
 };
 
 const BILLING_ACTIVITY_WINDOW_MONTHS = 3;
+const BILLING_SETTINGS_ID = 1;
+const AUTO_DEBIT_DISCOUNT_PERCENT = 20;
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
     if (value === null || value === undefined) return null;
@@ -51,6 +53,16 @@ function round2(value: number) {
 function clampDiscountPercent(value: Prisma.Decimal | number | string | null | undefined) {
     const percent = toNumber(value) ?? 0;
     return Math.min(100, Math.max(0, percent));
+}
+
+function getEffectiveDiscountPercent(
+    manualDiscount: Prisma.Decimal | number | string | null | undefined,
+    paymentMethod: BillingPaymentMethod | null | undefined
+) {
+    const automaticDebitDiscount = paymentMethod === BillingPaymentMethod.AUTO_DEBIT
+        ? AUTO_DEBIT_DISCOUNT_PERCENT
+        : 0;
+    return Math.min(100, clampDiscountPercent(manualDiscount) + automaticDebitDiscount);
 }
 
 function getBillingCycle(value: BillingCycle | null | undefined) {
@@ -202,6 +214,26 @@ export async function getBillingPlans() {
     });
 
     return plans.map(serializePlan);
+}
+
+export async function getBillingSettings() {
+    const settings = await prisma.billingSettings.findUnique({
+        where: { id: BILLING_SETTINGS_ID },
+        select: { whatsappNumber: true },
+    });
+
+    return { whatsappNumber: settings?.whatsappNumber ?? null };
+}
+
+export async function updateBillingSettings(input: { whatsappNumber: string | null }) {
+    const settings = await prisma.billingSettings.upsert({
+        where: { id: BILLING_SETTINGS_ID },
+        create: { id: BILLING_SETTINGS_ID, whatsappNumber: input.whatsappNumber },
+        update: { whatsappNumber: input.whatsappNumber },
+        select: { whatsappNumber: true },
+    });
+
+    return settings;
 }
 
 export async function createBillingPlan(input: CreatePlanInput) {
@@ -446,6 +478,7 @@ async function createInstallmentForUser(
         billingPlan?: any | null;
         billingCycle?: BillingCycle | null;
         billingDiscountPercent?: Prisma.Decimal | number | string | null;
+        billingPaymentMethod?: BillingPaymentMethod | null;
     },
     input: GenerateInstallmentsInput,
     producerPlans: ProducerPlansContext
@@ -599,7 +632,10 @@ async function createInstallmentForUser(
             : round2(header.fixedPriceSnapshot * cycleMultiplier);
     }
 
-    const discount = applyDiscount(header.amount, clampDiscountPercent(user.billingDiscountPercent));
+    const discount = applyDiscount(
+        header.amount,
+        getEffectiveDiscountPercent(user.billingDiscountPercent, user.billingPaymentMethod)
+    );
 
     try {
         const installment = await prisma.billingInstallment.create({
@@ -901,15 +937,127 @@ export async function markBillingInstallmentInvoiced(id: string) {
     return serializeInstallment(installment);
 }
 
-export async function getMyBillingSummary(userId: string) {
-    const installments = await prisma.billingInstallment.findMany({
-        where: {
-            userId,
-            status: BillingInstallmentStatus.PENDING,
-        },
-        orderBy: { dueDate: "asc" },
-        take: 20,
+async function getLatestSigleaLiterPrice() {
+    const latestInstallment = await prisma.billingInstallment.findFirst({
+        where: { sigleaLiterPrice: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { sigleaLiterPrice: true },
     });
+
+    return toNumber(latestInstallment?.sigleaLiterPrice);
+}
+
+async function getMyBillingEstimate(userId: string) {
+    const [user, sigleaLiterPrice] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            include: { billingPlan: true },
+        }),
+        getLatestSigleaLiterPrice(),
+    ]);
+
+    if (!user) throw { status: 404, message: "Usuario no encontrado" };
+    if (user.role !== Role.PRODUCTOR && user.role !== Role.EMPRESA) {
+        return { available: false, reason: "No hay un plan de cuotas para este usuario." };
+    }
+    if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
+        return { available: false, reason: "Todavía no hay un precio Siglea vigente para estimar tu cuota." };
+    }
+
+    let monthlyGrossAmount = 0;
+    let planName = "";
+
+    if (user.role === Role.PRODUCTOR) {
+        const currentPeriod = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+        const [tamboVos, producerPlans] = await Promise.all([
+            getLatestVoPerTambo(user.id, currentPeriod),
+            getProducerPlansContext(),
+        ]);
+
+        if (tamboVos.length === 0) {
+            const basicPlan = producerPlans.basicPlan;
+            if (!basicPlan || basicPlan.sigleaLiters === null) {
+                return { available: false, reason: "No hay datos de ordeñe ni un Plan Básico configurado para estimar tu cuota." };
+            }
+
+            planName = basicPlan.name;
+            monthlyGrossAmount = round2(Number(basicPlan.sigleaLiters) * sigleaLiterPrice);
+        } else {
+            const matchedPlans = tamboVos.map((tamboVo) => matchTierPlan(producerPlans.tierPlans, tamboVo.vo));
+            if (matchedPlans.some((plan) => !plan || plan.sigleaLiters === null)) {
+                return { available: false, reason: "Falta configurar un tramo de plan para tus datos de ordeñe actuales." };
+            }
+
+            monthlyGrossAmount = round2(matchedPlans.reduce(
+                (total, plan) => total + Number(plan!.sigleaLiters) * sigleaLiterPrice,
+                0
+            ));
+            planName = matchedPlans.length === 1 ? matchedPlans[0]!.name : `Planes por tambo (${matchedPlans.length})`;
+        }
+    } else {
+        const assignedPlan = user.billingPlan?.isActive
+            && user.billingPlan.targetRole === Role.EMPRESA
+            && user.billingPlan.planType === BillingPlanType.FIXED_ARS
+            ? user.billingPlan
+            : null;
+        const plan = assignedPlan || await findCompanyPlan();
+
+        if (!plan || plan.fixedPrice === null) {
+            return { available: false, reason: "No hay un plan de empresa configurado para estimar tu cuota." };
+        }
+
+        planName = plan.name;
+        monthlyGrossAmount = round2(Number(plan.fixedPrice) * sigleaLiterPrice);
+    }
+
+    const manualDiscountPercent = clampDiscountPercent(user.billingDiscountPercent);
+    const autoDebitDiscountPercent = user.billingPaymentMethod === BillingPaymentMethod.AUTO_DEBIT
+        ? AUTO_DEBIT_DISCOUNT_PERCENT
+        : 0;
+    const discountPercent = Math.min(100, manualDiscountPercent + autoDebitDiscountPercent);
+    const monthly = applyDiscount(monthlyGrossAmount, discountPercent);
+    const annual = user.role === Role.EMPRESA
+        ? applyDiscount(round2(monthlyGrossAmount * 12), discountPercent)
+        : null;
+    const autoDebitMonthly = applyDiscount(
+        monthlyGrossAmount,
+        Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT)
+    );
+    const autoDebitAnnual = user.role === Role.EMPRESA
+        ? applyDiscount(
+            round2(monthlyGrossAmount * 12),
+            Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT)
+        )
+        : null;
+
+    return {
+        available: true,
+        role: user.role,
+        planName,
+        sigleaLiterPrice,
+        paymentMethod: user.billingPaymentMethod,
+        manualDiscountPercent,
+        autoDebitDiscountPercent,
+        monthly,
+        annual,
+        autoDebitMonthly,
+        autoDebitAnnual,
+    };
+}
+
+export async function getMyBillingSummary(userId: string) {
+    const [installments, payment, estimate] = await Promise.all([
+        prisma.billingInstallment.findMany({
+            where: {
+                userId,
+                status: BillingInstallmentStatus.PENDING,
+            },
+            orderBy: { dueDate: "asc" },
+            take: 20,
+        }),
+        getBillingSettings(),
+        getMyBillingEstimate(userId),
+    ]);
 
     const serialized = installments.map(serializeInstallment);
     const overdue = serialized.filter((installment) => installment.effectiveStatus === "OVERDUE");
@@ -919,5 +1067,7 @@ export async function getMyBillingSummary(userId: string) {
         overdueCount: overdue.length,
         pendingCount: pending.length,
         next: overdue[0] ?? pending[0] ?? null,
+        payment,
+        estimate,
     };
 }

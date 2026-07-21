@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -36,6 +36,9 @@ const listMyInstallmentsSchema = listInstallmentsSchema.pick({
 const previewBillingSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
 });
+const billingSettingsSchema = z.object({
+    whatsappNumber: z.preprocess((value) => value === "" ? null : value, z.string().regex(/^\d{7,15}$/, "El WhatsApp debe estar en formato internacional, solo números").nullable()),
+});
 export async function getBillingPlansHandler(_req, res) {
     try {
         const plans = await getBillingPlans();
@@ -43,6 +46,29 @@ export async function getBillingPlansHandler(_req, res) {
     }
     catch (err) {
         console.error("getBillingPlansHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function getBillingSettingsHandler(_req, res) {
+    try {
+        const settings = await getBillingSettings();
+        return res.status(200).json(settings);
+    }
+    catch (err) {
+        console.error("getBillingSettingsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function updateBillingSettingsHandler(req, res) {
+    try {
+        const parsed = billingSettingsSchema.parse(req.body);
+        const settings = await updateBillingSettings(parsed);
+        return res.status(200).json(settings);
+    }
+    catch (err) {
+        if (err?.issues)
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("updateBillingSettingsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

@@ -6,6 +6,7 @@ import {
     deleteBillingPlan,
     generateBillingInstallments,
     getBillingPlans,
+    getBillingSettings,
     getMyBillingSummary,
     listBillingInstallments,
     listMyBillingInstallments,
@@ -14,6 +15,7 @@ import {
     markBillingInstallmentPending,
     previewProducerBilling,
     updateBillingPlan,
+    updateBillingSettings,
 } from "../services/billing.service.js";
 
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
@@ -58,12 +60,41 @@ const previewBillingSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
 });
 
+const billingSettingsSchema = z.object({
+    whatsappNumber: z.preprocess(
+        (value) => value === "" ? null : value,
+        z.string().regex(/^\d{7,15}$/, "El WhatsApp debe estar en formato internacional, solo números").nullable()
+    ),
+});
+
 export async function getBillingPlansHandler(_req: Request, res: Response) {
     try {
         const plans = await getBillingPlans();
         return res.status(200).json(plans);
     } catch (err: any) {
         console.error("getBillingPlansHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function getBillingSettingsHandler(_req: Request, res: Response) {
+    try {
+        const settings = await getBillingSettings();
+        return res.status(200).json(settings);
+    } catch (err) {
+        console.error("getBillingSettingsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function updateBillingSettingsHandler(req: Request, res: Response) {
+    try {
+        const parsed = billingSettingsSchema.parse(req.body);
+        const settings = await updateBillingSettings(parsed);
+        return res.status(200).json(settings);
+    } catch (err: any) {
+        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("updateBillingSettingsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

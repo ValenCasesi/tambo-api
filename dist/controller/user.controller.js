@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BillingCycle } from "@prisma/client";
+import { BillingCycle, BillingPaymentMethod } from "@prisma/client";
 import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 const optionalBillingPlanIdSchema = z.preprocess((value) => value === "" ? null : value, z.string().uuid().nullable().optional());
@@ -17,6 +17,7 @@ const createUserSchema = z.object({
     billingPlanId: optionalBillingPlanIdSchema,
     billingCycle: z.nativeEnum(BillingCycle).optional(),
     billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
+    billingPaymentMethod: z.nativeEnum(BillingPaymentMethod).optional(),
 });
 export async function createUserHandler(req, res) {
     try {
@@ -58,6 +59,7 @@ const updateUserSchema = z.object({
     billingPlanId: optionalBillingPlanIdSchema,
     billingCycle: z.nativeEnum(BillingCycle).optional(),
     billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
+    billingPaymentMethod: z.nativeEnum(BillingPaymentMethod).optional(),
 });
 export async function updateUserHandler(req, res) {
     try {
@@ -71,6 +73,7 @@ export async function updateUserHandler(req, res) {
             delete req.body.billingPlanId;
             delete req.body.billingCycle;
             delete req.body.billingDiscountPercent;
+            delete req.body.billingPaymentMethod;
         }
         let imageUrl = undefined;
         if (req.file) {

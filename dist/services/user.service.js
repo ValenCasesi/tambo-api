@@ -1,4 +1,4 @@
-import { BillingCycle } from "@prisma/client";
+import { BillingCycle, BillingPaymentMethod } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
@@ -67,7 +67,7 @@ const scoreSearchMatch = (value, query) => {
     return 3 + totalScore / queryTokens.length;
 };
 export async function createUser(input) {
-    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId, billingCycle = BillingCycle.MONTHLY, billingDiscountPercent = 0, } = input;
+    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId, billingCycle = BillingCycle.MONTHLY, billingDiscountPercent = 0, billingPaymentMethod = BillingPaymentMethod.TRANSFER, } = input;
     // check email uniqueness
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
     if (existingByEmail)
@@ -97,6 +97,7 @@ export async function createUser(input) {
             billingPlanId: safeBillingPlanId,
             billingCycle: billingCycle,
             billingDiscountPercent: billingDiscountPercent ?? 0,
+            billingPaymentMethod: billingPaymentMethod,
             status: isPending ? "PENDING" : "ACTIVE"
         },
     });
@@ -125,7 +126,7 @@ export async function createUser(input) {
     return safe;
 }
 export async function updateUser(input) {
-    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent, billingPaymentMethod } = input;
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "User not found" };
@@ -164,6 +165,7 @@ export async function updateUser(input) {
             ...(hashed && { password: hashed }),
             ...(billingCycle !== undefined && { billingCycle: billingCycle }),
             ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
+            ...(billingPaymentMethod !== undefined && { billingPaymentMethod: billingPaymentMethod }),
             ...billingPlanUpdate,
         },
         include: {

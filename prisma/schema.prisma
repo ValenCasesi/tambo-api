@@ -75,6 +75,11 @@ enum BillingCycle {
   ANNUAL
 }
 
+enum BillingPaymentMethod {
+  TRANSFER
+  AUTO_DEBIT
+}
+
 enum BillingInstallmentStatus {
   PENDING
   PAID
@@ -101,6 +106,7 @@ model User {
   billingPlanId String?
   billingCycle BillingCycle @default(MONTHLY)
   billingDiscountPercent Decimal @default(0) @db.Decimal(5, 2)
+  billingPaymentMethod BillingPaymentMethod @default(TRANSFER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -473,6 +479,13 @@ model BillingPlan {
 
   @@index([targetRole])
   @@index([isActive])
+}
+
+model BillingSettings {
+  id             Int      @id
+  whatsappNumber String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model BillingInstallment {
