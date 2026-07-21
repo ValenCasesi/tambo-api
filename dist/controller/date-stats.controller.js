@@ -4,17 +4,17 @@ const dateStatSchema = z.object({
     tamboId: z.string().uuid("El tamboId debe ser un UUID válido"),
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
-    vacasElegidas: z.coerce.number().min(0, "Debe ser mayor o igual a 0"),
-    vacasEnCelo: z.coerce.number().min(0, "Debe ser mayor o igual a 0"),
-    vacasPreniadas: z.coerce.number().min(0, "Debe ser mayor o igual a 0")
+    vacasElegidas: z.number().min(0, "Debe ser mayor o igual a 0").nullable(),
+    vacasEnCelo: z.number().min(0, "Debe ser mayor o igual a 0").nullable(),
+    vacasPreniadas: z.number().min(0, "Debe ser mayor o igual a 0").nullable()
 }).refine(data => data.endDate > data.startDate, {
     message: "endDate debe ser posterior a startDate",
     path: ["endDate"]
 });
 const dateStatUpdateSchema = z.object({
-    vacasElegidas: z.coerce.number().min(0).optional(),
-    vacasEnCelo: z.coerce.number().min(0).optional(),
-    vacasPreniadas: z.coerce.number().min(0).optional()
+    vacasElegidas: z.number().min(0).nullable().optional(),
+    vacasEnCelo: z.number().min(0).nullable().optional(),
+    vacasPreniadas: z.number().min(0).nullable().optional()
 }).refine(data => Object.keys(data).length > 0, {
     message: "Debe enviar al menos un campo para actualizar"
 });

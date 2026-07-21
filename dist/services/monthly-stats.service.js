@@ -231,7 +231,7 @@ export async function upsertMonthlyStatistic(input, actor) {
         }
         let porcentajeVacasVendidas = null;
         if (vCantVacasVendidasMes != null && vacasTotales > 0) {
-            porcentajeVacasVendidas = (vCantVacasVendidasMes * 100) / (vacasTotales / 12);
+            porcentajeVacasVendidas = (vCantVacasVendidasMes * 100) / vacasTotales;
         }
         let porcentajeVacasPrenadas = null;
         let animalesPrenados = null;
@@ -624,7 +624,7 @@ export async function updateMonthlyStatistic(id, data, actor) {
     }
     let porcentajeVacasVendidas = null;
     if (cantVacasVendidasMes != null && vacasTotales > 0) {
-        porcentajeVacasVendidas = (cantVacasVendidasMes * 100) / (vacasTotales / 12);
+        porcentajeVacasVendidas = (cantVacasVendidasMes * 100) / vacasTotales;
     }
     let porcentajeVacasPrenadas = null;
     let animalesPrenados = null;

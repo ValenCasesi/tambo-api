@@ -35,6 +35,8 @@ const normalizeSearchText = (value?: string | null) =>
 const splitSearchTokens = (value?: string | null) =>
     normalizeSearchText(value).split(/\s+/).filter(Boolean);
 
+const platformLoginUrl = "https://app.grupo-sinergia.com.ar/login";
+
 const getFuzzyThreshold = (length: number) => {
     if (length <= 2) return 0;
     if (length <= 5) return 1;
@@ -370,25 +372,33 @@ export async function approveUser(id: string) {
         data: { status: "ACTIVE" }
     });
 
-    sendMail(
-        existing.email,
-        "¡Bienvenido! Tu cuenta ha sido activada - Sinergia Plataforma",
-        `Hola ${existing.firstName},\n\nTenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como ${existing.role} ya se encuentra ACTIVA.\n\nPodés ingresar a la plataforma con las credenciales que creaste.\n\nSaludos,\nEl equipo de Sinergia.`,
-        buildHtmlTemplate({
-            title: "¡Tu cuenta ha sido activada!",
-            messageLines: [
-                `Hola ${existing.firstName},`,
-                `Tenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como <b>${existing.role}</b> ya se encuentra ACTIVA.`,
-                "Ya puedes ingresar a la plataforma con las credenciales que creaste."
-            ],
-            buttonText: "Iniciar Sesión",
-            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
-        })
-    ).catch(err => console.error("Error firing approved user email:", err));
+    let approvalEmailSent = true;
+    try {
+        // Esperamos la entrega al SMTP antes de terminar la solicitud. Esto evita
+        // que entornos serverless finalicen el proceso antes de iniciar el envío.
+        await sendMail(
+            existing.email,
+            "¡Bienvenido! Tu cuenta ha sido activada - Sinergia Plataforma",
+            `Hola ${existing.firstName},\n\nTenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como ${existing.role} ya se encuentra ACTIVA.\n\nPodés ingresar a la plataforma con las credenciales que creaste.\n\nSaludos,\nEl equipo de Sinergia.`,
+            buildHtmlTemplate({
+                title: "¡Tu cuenta ha sido activada!",
+                messageLines: [
+                    `Hola ${existing.firstName},`,
+                    `Tenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como <b>${existing.role}</b> ya se encuentra ACTIVA.`,
+                    "Ya puedes ingresar a la plataforma con las credenciales que creaste."
+                ],
+                buttonText: "Iniciar Sesión",
+                buttonUrl: platformLoginUrl
+            })
+        );
+    } catch (err) {
+        approvalEmailSent = false;
+        console.error("Error sending approved user email:", err);
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _pwd, ...safe } = approved;
-    return safe;
+    return { ...safe, approvalEmailSent };
 }
 
 export async function rejectUser(id: string) {
@@ -459,9 +469,9 @@ export async function reactivateUser(id: string) {
                 `Hola ${reactivated.firstName},`,
                 "Te informamos que el administrador ha rehabilitado el acceso a tu cuenta. Se han restaurado todos tus permisos.",
                 "Ya puedes ingresar nuevamente a la plataforma utilizando tus credenciales habituales."
-            ],
-            buttonText: "Iniciar Sesión",
-            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+                ],
+                buttonText: "Iniciar Sesión",
+                buttonUrl: platformLoginUrl
         })
     ).catch(err => console.error("Error firing reactivated user email:", err));
 
