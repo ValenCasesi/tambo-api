@@ -1,6 +1,7 @@
 import { BillingCycle, BillingInstallmentStatus, BillingPaymentMethod, BillingPlanType, EntityStatus, Prisma, Role } from "@prisma/client";
 import type { BillingPlan } from "@prisma/client";
 import prisma from "../prisma/client.js";
+import { findBillingPromotionForDate, getMyCurrentBillingPromotion } from "./billing-promotion.service.js";
 
 type EffectiveStatus = BillingInstallmentStatus | "OVERDUE";
 
@@ -106,7 +107,7 @@ function todayAtStart() {
 }
 
 function getEffectiveStatus(status: BillingInstallmentStatus, dueDate: Date): EffectiveStatus {
-    if (status === BillingInstallmentStatus.PAID) return BillingInstallmentStatus.PAID;
+    if (status === BillingInstallmentStatus.PAID || status === BillingInstallmentStatus.BONIFIED) return status;
     return dueDate < todayAtStart() ? "OVERDUE" : BillingInstallmentStatus.PENDING;
 }
 
@@ -145,6 +146,7 @@ function serializeInstallment(installment: any) {
         sigleaLitersSnapshot: toNumber(installment.sigleaLitersSnapshot),
         fixedPriceSnapshot: toNumber(installment.fixedPriceSnapshot),
         billingCycleSnapshot: installment.billingCycleSnapshot ?? BillingCycle.MONTHLY,
+        specialDiscountPercentSnapshot: toNumber(installment.specialDiscountPercentSnapshot),
         effectiveStatus: getEffectiveStatus(installment.status, installment.dueDate),
         plan: installment.plan ? serializePlan(installment.plan) : null,
         items: Array.isArray(installment.items)
@@ -632,9 +634,11 @@ async function createInstallmentForUser(
             : round2(header.fixedPriceSnapshot * cycleMultiplier);
     }
 
+    const billingPromotion = await findBillingPromotionForDate(user.id, input.dueDate);
+    const baseDiscount = billingPromotion?.discountPercent ?? user.billingDiscountPercent;
     const discount = applyDiscount(
         header.amount,
-        getEffectiveDiscountPercent(user.billingDiscountPercent, user.billingPaymentMethod)
+        getEffectiveDiscountPercent(baseDiscount, user.billingPaymentMethod)
     );
 
     try {
@@ -645,6 +649,9 @@ async function createInstallmentForUser(
                 period: input.period,
                 periodEnd,
                 dueDate: input.dueDate,
+                status: discount.amount === 0
+                    ? BillingInstallmentStatus.BONIFIED
+                    : BillingInstallmentStatus.PENDING,
                 amount: discount.amount,
                 grossAmount: discount.grossAmount,
                 discountPercentSnapshot: discount.discountPercent,
@@ -652,6 +659,9 @@ async function createInstallmentForUser(
                 sigleaLiterPrice: input.sigleaLiterPrice,
                 voUsed: header.voUsed,
                 billingCycleSnapshot: billingCycle,
+                billingPromotionId: billingPromotion?.id ?? null,
+                billingPromotionReasonSnapshot: billingPromotion?.reason ?? null,
+                specialDiscountPercentSnapshot: billingPromotion?.discountPercent ?? null,
                 planNameSnapshot: header.planNameSnapshot,
                 planTypeSnapshot: header.planTypeSnapshot,
                 targetRoleSnapshot: header.targetRoleSnapshot,
@@ -1010,7 +1020,9 @@ async function getMyBillingEstimate(userId: string) {
         monthlyGrossAmount = round2(Number(plan.fixedPrice) * sigleaLiterPrice);
     }
 
-    const manualDiscountPercent = clampDiscountPercent(user.billingDiscountPercent);
+    const specialPromotion = await getMyCurrentBillingPromotion(user.id);
+    const usualDiscountPercent = clampDiscountPercent(user.billingDiscountPercent);
+    const manualDiscountPercent = specialPromotion?.discountPercent ?? usualDiscountPercent;
     const autoDebitDiscountPercent = user.billingPaymentMethod === BillingPaymentMethod.AUTO_DEBIT
         ? AUTO_DEBIT_DISCOUNT_PERCENT
         : 0;
@@ -1037,6 +1049,8 @@ async function getMyBillingEstimate(userId: string) {
         sigleaLiterPrice,
         paymentMethod: user.billingPaymentMethod,
         manualDiscountPercent,
+        usualDiscountPercent,
+        specialPromotion,
         autoDebitDiscountPercent,
         monthly,
         annual,
@@ -1046,7 +1060,7 @@ async function getMyBillingEstimate(userId: string) {
 }
 
 export async function getMyBillingSummary(userId: string) {
-    const [installments, payment, estimate] = await Promise.all([
+    const [installments, payment, estimate, specialPromotion] = await Promise.all([
         prisma.billingInstallment.findMany({
             where: {
                 userId,
@@ -1057,6 +1071,7 @@ export async function getMyBillingSummary(userId: string) {
         }),
         getBillingSettings(),
         getMyBillingEstimate(userId),
+        getMyCurrentBillingPromotion(userId),
     ]);
 
     const serialized = installments.map(serializeInstallment);
@@ -1069,5 +1084,6 @@ export async function getMyBillingSummary(userId: string) {
         next: overdue[0] ?? pending[0] ?? null,
         payment,
         estimate,
+        specialPromotion,
     };
 }

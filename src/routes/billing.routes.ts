@@ -17,11 +17,20 @@ import {
     updateBillingSettingsHandler,
 } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
+import {
+    cancelBillingPromotionHandler,
+    createBillingPromotionHandler,
+    getBillingPromotionAlertsHandler,
+    listBillingPromotionsHandler,
+    processBillingPromotionNotificationsHandler,
+    updateBillingPromotionHandler,
+} from "../controller/billing-promotion.controller.js";
 
 const router = Router();
 
 router.get("/billing/me/summary", requireAuth, getMyBillingSummaryHandler);
 router.get("/billing/me/installments", requireAuth, listMyBillingInstallmentsHandler);
+router.get("/cron/billing-promotions", processBillingPromotionNotificationsHandler);
 
 router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHandler);
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
@@ -29,6 +38,11 @@ router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPl
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
 router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
+router.get("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), listBillingPromotionsHandler);
+router.post("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), createBillingPromotionHandler);
+router.put("/billing/promotions/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPromotionHandler);
+router.post("/billing/promotions/:id/cancel", requireAuth, requireRole([Role.ADMIN]), cancelBillingPromotionHandler);
+router.get("/billing/promotions-alerts", requireAuth, requireRole([Role.ADMIN]), getBillingPromotionAlertsHandler);
 
 router.get("/cuotas", requireAuth, requireRole([Role.ADMIN]), listBillingInstallmentsHandler);
 router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), previewProducerBillingHandler);

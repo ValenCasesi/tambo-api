@@ -46,7 +46,7 @@ const generateSchema = z.object({
 
 const listInstallmentsSchema = z.object({
     period: z.string().regex(/^\d{6}$/).optional(),
-    status: z.enum([BillingInstallmentStatus.PENDING, BillingInstallmentStatus.PAID, "OVERDUE"]).optional(),
+    status: z.enum([BillingInstallmentStatus.PENDING, BillingInstallmentStatus.PAID, BillingInstallmentStatus.BONIFIED, "OVERDUE"]).optional(),
     role: billingRoleSchema.optional(),
     userId: z.string().uuid().optional(),
 });

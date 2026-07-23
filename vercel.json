@@ -11,5 +11,11 @@
             "src": "/(.*)",
             "dest": "dist/app.js"
         }
+    ],
+    "crons": [
+        {
+            "path": "/api/cron/billing-promotions",
+            "schedule": "0 12 * * *"
+        }
     ]
 }
