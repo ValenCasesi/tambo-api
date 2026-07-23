@@ -1,4 +1,4 @@
-import { BillingCycle, BillingPaymentMethod, Role } from "@prisma/client";
+import { BillingCycle, BillingPaymentMethod, BillingPlanType, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
@@ -148,7 +148,9 @@ export async function createUser(input: CreateUserInput) {
             localidad,
             imageUrl,
             billingPlanId: safeBillingPlanId,
-            billingCycle: billingCycle as BillingCycle,
+            billingCycle: role === Role.EMPRESA
+                ? BillingCycle.MONTHLY
+                : billingCycle as BillingCycle,
             billingDiscountPercent: billingDiscountPercent ?? 0,
             billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod,
             status: isPending ? "PENDING" : "ACTIVE"
@@ -226,6 +228,13 @@ export async function updateUser(input: UpdateUserInput) {
     }
 
     const nextRole = (role || existing.role) as Role;
+    const nextBillingPlanId = billingPlanId !== undefined
+        ? billingPlanId
+        : existing.billingPlanId;
+    if (existing.status === "ACTIVE" && nextRole === Role.EMPRESA && !nextBillingPlanId) {
+        throw { status: 400, message: "Las empresas activas deben tener un plan asignado" };
+    }
+
     const billingPlanUpdate = billingPlanId !== undefined
         ? { billingPlanId: await validateBillingPlanForUser(nextRole, billingPlanId) }
         : role && role !== existing.role
@@ -245,7 +254,9 @@ export async function updateUser(input: UpdateUserInput) {
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
-            ...(billingCycle !== undefined && { billingCycle: billingCycle as BillingCycle }),
+            ...(billingCycle !== undefined && nextRole !== Role.EMPRESA && {
+                billingCycle: billingCycle as BillingCycle,
+            }),
             ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
             ...(billingPaymentMethod !== undefined && { billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod }),
             ...billingPlanUpdate,
@@ -264,6 +275,13 @@ export async function updateUser(input: UpdateUserInput) {
 export async function getAllUsers(filters: UserFilters = {}) {
     const { status: statusFilter, search, localidad } = filters;
     const whereClause: any = {};
+    const argentinaDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Argentina/Cordoba",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(new Date());
+    const today = new Date(`${argentinaDate}T00:00:00.000Z`);
     
     if (statusFilter) {
         whereClause.status = statusFilter;
@@ -275,6 +293,22 @@ export async function getAllUsers(filters: UserFilters = {}) {
         where: whereClause,
         include: {
             billingPlan: true,
+            billingPromotions: {
+                where: {
+                    cancelledAt: null,
+                    startDate: { lte: today },
+                    endDate: { gte: today },
+                },
+                select: {
+                    id: true,
+                    discountPercent: true,
+                    reason: true,
+                    startDate: true,
+                    endDate: true,
+                },
+                orderBy: { endDate: "asc" },
+                take: 1,
+            },
             _count: {
                 select: { tambos: true }
             }
@@ -315,8 +349,19 @@ export async function getAllUsers(filters: UserFilters = {}) {
 
     return filteredUsers.map((u) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password: _pwd, ...safe } = u;
-        return safe;
+        const { password: _pwd, billingPromotions, ...safe } = u;
+        const currentBillingPromotion = billingPromotions[0];
+        return {
+            ...safe,
+            currentBillingPromotion: currentBillingPromotion
+                ? {
+                    ...currentBillingPromotion,
+                    discountPercent: Number(currentBillingPromotion.discountPercent),
+                    startDate: currentBillingPromotion.startDate.toISOString().slice(0, 10),
+                    endDate: currentBillingPromotion.endDate.toISOString().slice(0, 10),
+                }
+                : null,
+        };
     });
 }
 
@@ -329,6 +374,9 @@ async function validateBillingPlanForUser(role: Role, billingPlanId?: string | n
     if (!plan) throw { status: 404, message: "Plan no encontrado" };
     if (!plan.isActive) throw { status: 400, message: "El plan seleccionado está inactivo" };
     if (plan.targetRole !== role) throw { status: 400, message: "El plan seleccionado no corresponde al rol del usuario" };
+    if (role === Role.EMPRESA && plan.planType !== BillingPlanType.FIXED_ARS) {
+        throw { status: 400, message: "El plan seleccionado no corresponde a una empresa" };
+    }
 
     return plan.id;
 }
@@ -367,14 +415,24 @@ export async function getPendingUsers() {
     });
 }
 
-export async function approveUser(id: string) {
+export async function approveUser(id: string, billingPlanId?: string | null) {
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
     if (existing.status !== "PENDING") throw { status: 400, message: "User is not in PENDING status" };
 
+    const safeBillingPlanId = existing.role === Role.EMPRESA
+        ? await validateBillingPlanForUser(existing.role, billingPlanId)
+        : null;
+    if (existing.role === Role.EMPRESA && !safeBillingPlanId) {
+        throw { status: 400, message: "Debés asignar un plan antes de aprobar la empresa" };
+    }
+
     const approved = await prisma.user.update({
         where: { id },
-        data: { status: "ACTIVE" }
+        data: {
+            status: "ACTIVE",
+            billingPlanId: safeBillingPlanId,
+        }
     });
 
     let approvalEmailSent = true;
@@ -458,6 +516,9 @@ export async function reactivateUser(id: string) {
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
     if (existing.status === "ACTIVE") throw { status: 400, message: "User is already active" };
+    if (existing.role === Role.EMPRESA && !existing.billingPlanId) {
+        throw { status: 400, message: "Debés asignar un plan antes de reactivar la empresa" };
+    }
 
     const reactivated = await prisma.user.update({
         where: { id },

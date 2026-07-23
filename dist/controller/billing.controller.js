@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
+import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
 import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
@@ -10,8 +10,8 @@ const planSchema = z.object({
     maxVo: z.coerce.number().min(0).nullable().optional(),
     sigleaLiters: z.coerce.number().min(0).nullable().optional(),
     fixedPrice: z.coerce.number().min(0).nullable().optional(),
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
     isActive: z.coerce.boolean().optional(),
-    isDefault: z.coerce.boolean().optional(),
     isBasic: z.coerce.boolean().optional(),
 });
 const updatePlanSchema = planSchema.partial();

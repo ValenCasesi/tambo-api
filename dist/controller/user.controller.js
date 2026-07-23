@@ -140,12 +140,18 @@ export async function getPendingUsersHandler(req, res) {
 export async function approveUserHandler(req, res) {
     try {
         const id = req.params.id;
-        const result = await approveUser(id);
+        const parsed = z.object({
+            billingPlanId: optionalBillingPlanIdSchema,
+        }).parse(req.body ?? {});
+        const result = await approveUser(id, parsed.billingPlanId);
         return res.status(200).json(result);
     }
     catch (err) {
         if (err?.status && err?.message) {
             return res.status(err.status).json({ error: err.message });
+        }
+        if (err?.issues) {
+            return res.status(400).json({ error: "Validation error", details: err.issues });
         }
         console.error("approveUserHandler:", err);
         return res.status(500).json({ error: "Internal server error" });

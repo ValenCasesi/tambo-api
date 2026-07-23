@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
+import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
 import {
     createBillingPlan,
     deleteBillingPlan,
@@ -28,8 +28,8 @@ const planSchema = z.object({
     maxVo: z.coerce.number().min(0).nullable().optional(),
     sigleaLiters: z.coerce.number().min(0).nullable().optional(),
     fixedPrice: z.coerce.number().min(0).nullable().optional(),
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
     isActive: z.coerce.boolean().optional(),
-    isDefault: z.coerce.boolean().optional(),
     isBasic: z.coerce.boolean().optional(),
 });
 

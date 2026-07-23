@@ -103,36 +103,27 @@ function validatePlanShape(input) {
     if (input.targetRole !== Role.PRODUCTOR && input.targetRole !== Role.EMPRESA) {
         throw { status: 400, message: "El plan solo puede ser para PRODUCTOR o EMPRESA" };
     }
-    if (input.isBasic && (input.targetRole !== Role.PRODUCTOR || input.planType !== BillingPlanType.SIGLEA_LITERS)) {
-        throw { status: 400, message: "El Plan Básico debe ser para PRODUCTOR con litros Siglea" };
-    }
-    if (input.planType === BillingPlanType.SIGLEA_LITERS) {
+    if (input.targetRole === Role.PRODUCTOR) {
+        if (input.planType !== BillingPlanType.SIGLEA_LITERS || !input.isBasic) {
+            throw { status: 400, message: "Para productores solo se puede administrar el Plan Básico" };
+        }
+        if (input.billingCycle && input.billingCycle !== BillingCycle.MONTHLY) {
+            throw { status: 400, message: "El Plan Básico de productores debe ser mensual" };
+        }
         if (input.sigleaLiters === undefined || input.sigleaLiters === null || input.sigleaLiters <= 0) {
-            throw { status: 400, message: "Los planes por Siglea requieren litros mayores a cero" };
+            throw { status: 400, message: "El Plan Básico requiere litros Siglea mayores a cero" };
         }
-        if (!input.isBasic) {
-            if (input.minVo === undefined || input.minVo === null || input.minVo < 0) {
-                throw { status: 400, message: "Los planes por Siglea requieren VO mínimo" };
-            }
-            if (input.maxVo !== undefined && input.maxVo !== null && input.maxVo < input.minVo) {
-                throw { status: 400, message: "El VO máximo no puede ser menor al VO mínimo" };
-            }
-        }
+        return;
     }
-    if (input.planType === BillingPlanType.FIXED_ARS) {
-        if (input.fixedPrice === undefined || input.fixedPrice === null || input.fixedPrice <= 0) {
-            throw { status: 400, message: "Los planes de empresa requieren litros Siglea mayores a cero" };
-        }
+    if (input.planType !== BillingPlanType.FIXED_ARS || input.isBasic) {
+        throw { status: 400, message: "Los planes de empresa deben configurarse en litros Siglea" };
     }
-}
-async function clearOtherCompanyDefaults(planId) {
-    await prisma.billingPlan.updateMany({
-        where: {
-            targetRole: Role.EMPRESA,
-            ...(planId ? { id: { not: planId } } : {}),
-        },
-        data: { isDefault: false },
-    });
+    if (!input.billingCycle) {
+        throw { status: 400, message: "La duración del plan de empresa es obligatoria" };
+    }
+    if (input.fixedPrice === undefined || input.fixedPrice === null || input.fixedPrice <= 0) {
+        throw { status: 400, message: "Los planes de empresa requieren litros Siglea mayores a cero" };
+    }
 }
 async function clearOtherBasicPlans(planId) {
     await prisma.billingPlan.updateMany({
@@ -173,23 +164,32 @@ export async function updateBillingSettings(input) {
 export async function createBillingPlan(input) {
     validatePlanShape(input);
     const isBasic = input.targetRole === Role.PRODUCTOR ? input.isBasic ?? false : false;
-    if (input.isDefault && input.targetRole === Role.EMPRESA) {
-        await clearOtherCompanyDefaults();
-    }
     if (isBasic) {
-        await clearOtherBasicPlans();
+        const existingBasicPlan = await prisma.billingPlan.findFirst({
+            where: {
+                targetRole: Role.PRODUCTOR,
+                isBasic: true,
+            },
+            select: { id: true },
+        });
+        if (existingBasicPlan) {
+            throw { status: 409, message: "Ya existe un Plan Básico para productores; podés editar el actual" };
+        }
     }
     const plan = await prisma.billingPlan.create({
         data: {
             name: input.name,
             targetRole: input.targetRole,
             planType: input.planType,
+            billingCycle: input.targetRole === Role.EMPRESA
+                ? input.billingCycle
+                : BillingCycle.MONTHLY,
             minVo: input.planType === BillingPlanType.SIGLEA_LITERS && !isBasic ? input.minVo : null,
             maxVo: input.planType === BillingPlanType.SIGLEA_LITERS && !isBasic ? input.maxVo ?? null : null,
             sigleaLiters: input.planType === BillingPlanType.SIGLEA_LITERS ? input.sigleaLiters : null,
             fixedPrice: input.planType === BillingPlanType.FIXED_ARS ? input.fixedPrice : null,
             isActive: input.isActive ?? true,
-            isDefault: input.targetRole === Role.EMPRESA ? input.isDefault ?? false : false,
+            isDefault: false,
             isBasic,
         },
     });
@@ -199,22 +199,48 @@ export async function updateBillingPlan(input) {
     const existing = await prisma.billingPlan.findUnique({ where: { id: input.id } });
     if (!existing)
         throw { status: 404, message: "Plan no encontrado" };
+    if (input.billingCycle !== undefined && input.billingCycle !== existing.billingCycle) {
+        throw {
+            status: 400,
+            message: "La duración de un plan existente no se puede modificar; creá un nuevo plan",
+        };
+    }
+    if ((input.targetRole !== undefined && input.targetRole !== existing.targetRole)
+        || (input.planType !== undefined && input.planType !== existing.planType)
+        || (input.isBasic !== undefined && input.isBasic !== existing.isBasic)) {
+        throw {
+            status: 400,
+            message: "El tipo de un plan existente no se puede modificar; creá un nuevo plan",
+        };
+    }
     const merged = {
         name: input.name ?? existing.name,
         targetRole: input.targetRole ?? existing.targetRole,
         planType: input.planType ?? existing.planType,
+        billingCycle: existing.billingCycle,
         minVo: input.minVo !== undefined ? input.minVo : toNumber(existing.minVo),
         maxVo: input.maxVo !== undefined ? input.maxVo : toNumber(existing.maxVo),
         sigleaLiters: input.sigleaLiters !== undefined ? input.sigleaLiters : toNumber(existing.sigleaLiters),
         fixedPrice: input.fixedPrice !== undefined ? input.fixedPrice : toNumber(existing.fixedPrice),
         isActive: input.isActive ?? existing.isActive,
-        isDefault: input.isDefault ?? existing.isDefault,
         isBasic: input.isBasic ?? existing.isBasic,
     };
     validatePlanShape(merged);
     const isBasic = merged.targetRole === Role.PRODUCTOR ? merged.isBasic ?? false : false;
-    if (merged.isDefault && merged.targetRole === Role.EMPRESA) {
-        await clearOtherCompanyDefaults(input.id);
+    if (existing.isActive && !merged.isActive) {
+        const assignedActiveCompanies = await prisma.user.count({
+            where: {
+                billingPlanId: input.id,
+                role: Role.EMPRESA,
+                status: EntityStatus.ACTIVE,
+            },
+        });
+        if (assignedActiveCompanies > 0) {
+            throw {
+                status: 409,
+                message: "No podés desactivar un plan asignado a empresas activas; reasignalas primero",
+            };
+        }
     }
     if (isBasic) {
         await clearOtherBasicPlans(input.id);
@@ -225,12 +251,13 @@ export async function updateBillingPlan(input) {
             name: merged.name,
             targetRole: merged.targetRole,
             planType: merged.planType,
+            billingCycle: existing.billingCycle,
             minVo: merged.planType === BillingPlanType.SIGLEA_LITERS && !isBasic ? merged.minVo : null,
             maxVo: merged.planType === BillingPlanType.SIGLEA_LITERS && !isBasic ? merged.maxVo ?? null : null,
             sigleaLiters: merged.planType === BillingPlanType.SIGLEA_LITERS ? merged.sigleaLiters : null,
             fixedPrice: merged.planType === BillingPlanType.FIXED_ARS ? merged.fixedPrice : null,
             isActive: merged.isActive,
-            isDefault: merged.targetRole === Role.EMPRESA ? merged.isDefault ?? false : false,
+            isDefault: false,
             isBasic,
         },
     });
@@ -240,11 +267,25 @@ export async function deleteBillingPlan(id) {
     const existing = await prisma.billingPlan.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Plan no encontrado" };
-    const [linkedInstallments, linkedItems] = await Promise.all([
+    const [assignedUsers, assignedActiveCompanies, linkedInstallments, linkedItems] = await Promise.all([
+        prisma.user.count({ where: { billingPlanId: id } }),
+        prisma.user.count({
+            where: {
+                billingPlanId: id,
+                role: Role.EMPRESA,
+                status: EntityStatus.ACTIVE,
+            },
+        }),
         prisma.billingInstallment.count({ where: { planId: id } }),
         prisma.billingInstallmentItem.count({ where: { planId: id } }),
     ]);
-    if (linkedInstallments > 0 || linkedItems > 0) {
+    if (assignedActiveCompanies > 0) {
+        throw {
+            status: 409,
+            message: "No podés eliminar un plan asignado a empresas activas; reasignalas primero",
+        };
+    }
+    if (assignedUsers > 0 || linkedInstallments > 0 || linkedItems > 0) {
         const plan = await prisma.billingPlan.update({
             where: { id },
             data: { isActive: false, isDefault: false, isBasic: false },
@@ -324,30 +365,13 @@ function matchTierPlan(tierPlans, vo) {
     }
     return best;
 }
-async function findCompanyPlan() {
-    const defaultPlan = await prisma.billingPlan.findFirst({
-        where: {
-            targetRole: Role.EMPRESA,
-            planType: BillingPlanType.FIXED_ARS,
-            isActive: true,
-            isDefault: true,
-        },
-        orderBy: { createdAt: "desc" },
-    });
-    if (defaultPlan)
-        return defaultPlan;
-    return prisma.billingPlan.findFirst({
-        where: {
-            targetRole: Role.EMPRESA,
-            planType: BillingPlanType.FIXED_ARS,
-            isActive: true,
-        },
-        orderBy: { createdAt: "desc" },
-    });
-}
 async function createInstallmentForUser(user, input, producerPlans) {
-    const billingCycle = getBillingCycle(user.billingCycle);
-    const cycleMultiplier = getCycleMultiplier(billingCycle);
+    const billingCycle = user.role === Role.EMPRESA
+        ? getBillingCycle(user.billingPlan?.billingCycle)
+        : getBillingCycle(user.billingCycle);
+    const cycleMultiplier = user.role === Role.PRODUCTOR
+        ? getCycleMultiplier(billingCycle)
+        : 1;
     const periodEnd = billingCycle === BillingCycle.ANNUAL ? addMonthsToPeriod(input.period, 11) : null;
     const existing = await prisma.billingInstallment.findFirst({
         where: {
@@ -448,7 +472,7 @@ async function createInstallmentForUser(user, input, producerPlans) {
             && user.billingPlan.planType === BillingPlanType.FIXED_ARS
             ? user.billingPlan
             : null;
-        const plan = assignedPlan || await findCompanyPlan();
+        const plan = assignedPlan;
         if (!plan || plan.fixedPrice === null) {
             return { status: "SKIPPED_NO_PLAN", userId: user.id, tambos: [] };
         }
@@ -529,6 +553,63 @@ async function createInstallmentForUser(user, input, producerPlans) {
         throw err;
     }
 }
+async function updatePendingProducerInstallments(period, sigleaLiterPrice) {
+    if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
+        return [];
+    }
+    return prisma.$transaction(async (tx) => {
+        // Las cuotas vencidas también permanecen como PENDING; su estado
+        // OVERDUE se calcula al serializarlas a partir de dueDate.
+        const installments = await tx.billingInstallment.findMany({
+            where: {
+                status: BillingInstallmentStatus.PENDING,
+                targetRoleSnapshot: Role.PRODUCTOR,
+                billingCycleSnapshot: BillingCycle.MONTHLY,
+                period: { lt: period },
+                sigleaLitersSnapshot: { not: null },
+            },
+            select: {
+                id: true,
+                sigleaLitersSnapshot: true,
+                discountPercentSnapshot: true,
+                items: {
+                    select: {
+                        id: true,
+                        sigleaLitersSnapshot: true,
+                    },
+                },
+            },
+        });
+        for (const installment of installments) {
+            const recalculatedItems = installment.items
+                .filter((item) => item.sigleaLitersSnapshot !== null)
+                .map((item) => ({
+                id: item.id,
+                amount: round2(Number(item.sigleaLitersSnapshot) * sigleaLiterPrice),
+            }));
+            const grossAmount = recalculatedItems.length > 0
+                ? round2(recalculatedItems.reduce((total, item) => total + item.amount, 0))
+                : round2(Number(installment.sigleaLitersSnapshot) * sigleaLiterPrice);
+            const discount = applyDiscount(grossAmount, clampDiscountPercent(installment.discountPercentSnapshot));
+            await tx.billingInstallment.update({
+                where: { id: installment.id },
+                data: {
+                    amount: discount.amount,
+                    grossAmount: discount.grossAmount,
+                    discountAmount: discount.discountAmount,
+                    sigleaLiterPrice,
+                },
+            });
+            for (const item of recalculatedItems) {
+                await tx.billingInstallmentItem.update({
+                    where: { id: item.id },
+                    data: { amount: item.amount },
+                });
+            }
+        }
+        return installments.map((installment) => installment.id);
+    }, { timeout: 30_000 });
+}
 export async function generateBillingInstallments(input) {
     const roleFilter = input.targetRole ? [input.targetRole] : [Role.PRODUCTOR, Role.EMPRESA];
     const selectedUserIds = input.userIds?.length ? input.userIds : input.userId ? [input.userId] : [];
@@ -543,8 +624,10 @@ export async function generateBillingInstallments(input) {
         throw { status: 404, message: "Usuarios activos no encontrados para generar cuotas" };
     }
     const producerPlans = await getProducerPlansContext();
+    const updatedPending = await updatePendingProducerInstallments(input.period, input.sigleaLiterPrice);
     const result = {
         created: [],
+        updatedPending,
         skippedDuplicates: [],
         skippedNoPlan: [],
         skippedNoBasicPlan: [],
@@ -570,6 +653,7 @@ export async function generateBillingInstallments(input) {
         ...result,
         summary: {
             created: result.created.length,
+            updatedPending: result.updatedPending.length,
             skippedDuplicates: result.skippedDuplicates.length,
             skippedNoPlan: result.skippedNoPlan.length,
             skippedNoBasicPlan: result.skippedNoBasicPlan.length,
@@ -778,8 +862,9 @@ async function getMyBillingEstimate(userId) {
     if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
         return { available: false, reason: "Todavía no hay un precio Siglea vigente para estimar tu cuota." };
     }
-    let monthlyGrossAmount = 0;
+    let planGrossAmount = 0;
     let planName = "";
+    let billingCycle = getBillingCycle(user.billingCycle);
     if (user.role === Role.PRODUCTOR) {
         const currentPeriod = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
         const [tamboVos, producerPlans] = await Promise.all([
@@ -792,14 +877,14 @@ async function getMyBillingEstimate(userId) {
                 return { available: false, reason: "No hay datos de ordeñe ni un Plan Básico configurado para estimar tu cuota." };
             }
             planName = basicPlan.name;
-            monthlyGrossAmount = round2(Number(basicPlan.sigleaLiters) * sigleaLiterPrice);
+            planGrossAmount = round2(Number(basicPlan.sigleaLiters) * sigleaLiterPrice);
         }
         else {
             const matchedPlans = tamboVos.map((tamboVo) => matchTierPlan(producerPlans.tierPlans, tamboVo.vo));
             if (matchedPlans.some((plan) => !plan || plan.sigleaLiters === null)) {
                 return { available: false, reason: "Falta configurar un tramo de plan para tus datos de ordeñe actuales." };
             }
-            monthlyGrossAmount = round2(matchedPlans.reduce((total, plan) => total + Number(plan.sigleaLiters) * sigleaLiterPrice, 0));
+            planGrossAmount = round2(matchedPlans.reduce((total, plan) => total + Number(plan.sigleaLiters) * sigleaLiterPrice, 0));
             planName = matchedPlans.length === 1 ? matchedPlans[0].name : `Planes por tambo (${matchedPlans.length})`;
         }
     }
@@ -809,12 +894,13 @@ async function getMyBillingEstimate(userId) {
             && user.billingPlan.planType === BillingPlanType.FIXED_ARS
             ? user.billingPlan
             : null;
-        const plan = assignedPlan || await findCompanyPlan();
+        const plan = assignedPlan;
         if (!plan || plan.fixedPrice === null) {
             return { available: false, reason: "No hay un plan de empresa configurado para estimar tu cuota." };
         }
         planName = plan.name;
-        monthlyGrossAmount = round2(Number(plan.fixedPrice) * sigleaLiterPrice);
+        billingCycle = getBillingCycle(plan.billingCycle);
+        planGrossAmount = round2(Number(plan.fixedPrice) * sigleaLiterPrice);
     }
     const specialPromotion = await getMyCurrentBillingPromotion(user.id);
     const usualDiscountPercent = clampDiscountPercent(user.billingDiscountPercent);
@@ -823,28 +909,26 @@ async function getMyBillingEstimate(userId) {
         ? AUTO_DEBIT_DISCOUNT_PERCENT
         : 0;
     const discountPercent = Math.min(100, manualDiscountPercent + autoDebitDiscountPercent);
-    const monthly = applyDiscount(monthlyGrossAmount, discountPercent);
-    const annual = user.role === Role.EMPRESA
-        ? applyDiscount(round2(monthlyGrossAmount * 12), discountPercent)
-        : null;
-    const autoDebitMonthly = applyDiscount(monthlyGrossAmount, Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT));
-    const autoDebitAnnual = user.role === Role.EMPRESA
-        ? applyDiscount(round2(monthlyGrossAmount * 12), Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT))
-        : null;
+    const current = applyDiscount(planGrossAmount, discountPercent);
+    const autoDebitCurrent = applyDiscount(planGrossAmount, Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT));
     return {
         available: true,
         role: user.role,
         planName,
+        billingCycle,
         sigleaLiterPrice,
         paymentMethod: user.billingPaymentMethod,
         manualDiscountPercent,
         usualDiscountPercent,
         specialPromotion,
         autoDebitDiscountPercent,
-        monthly,
-        annual,
-        autoDebitMonthly,
-        autoDebitAnnual,
+        current,
+        autoDebitCurrent,
+        // Compatibilidad temporal con clientes anteriores.
+        monthly: current,
+        annual: null,
+        autoDebitMonthly: autoDebitCurrent,
+        autoDebitAnnual: null,
     };
 }
 export async function getMyBillingSummary(userId) {

@@ -474,6 +474,7 @@ model BillingPlan {
   name       String
   targetRole Role
   planType   BillingPlanType
+  billingCycle BillingCycle  @default(MONTHLY)
 
   minVo        Decimal? @db.Decimal(10, 2)
   maxVo        Decimal? @db.Decimal(10, 2)
