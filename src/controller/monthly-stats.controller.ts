@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { upsertMonthlyStatistic, getAnnualStatistics, getAllMonthlyStatistics, getMonthlyStatisticsByTambo, updateMonthlyStatistic, deleteMonthlyStatistic, getMyMonthlyStatsActivitySummary } from "../services/monthly-stats.service.js";
+import { getStatsComparison } from "../services/stats-comparison.service.js";
 
 const monthlyStatSchema = z.object({
     tamboId: z.string().uuid(),
@@ -39,6 +40,47 @@ const monthlyStatSchema = z.object({
     conteoCultivoPlacasPositivo: z.coerce.number().min(0).optional(),
     conteoCultivoPlacasContaminados: z.coerce.number().min(0).optional()
 });
+
+const statsComparisonQuerySchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    size: z.enum(["CHICO", "MEDIANO", "GRANDE", "MEGA"]).optional(),
+    cuenca: z.enum([
+        "CENTRO_CBA_VILLA_MARIA", "SANTA_FE_CENTRO", "SANTA_FE_NORTE",
+        "CBA_SUR", "ENTRE_RIOS_OESTE", "ENTRE_RIOS_ESTE", "CBA_NORTE",
+        "BSAS_OESTE", "BSAS_ABASTO_NORTE", "BSAS_ABASTO_SUR",
+        "BSAS_MAR_Y_SIERRAS", "LA_PAMPA", "NOA", "NEA", "PATAGONICA"
+    ]).optional(),
+    system: z.enum([
+        "PASTORIL", "PASTORIL_SUPLEMENTADO", "DRY_LOT",
+        "FREE_STALL", "COMPOST_BARN"
+    ]).optional()
+});
+
+export async function getStatsComparisonHandler(req: Request, res: Response) {
+    try {
+        const query = statsComparisonQuerySchema.parse(req.query);
+        const data = await getStatsComparison(
+            req.params.tamboId as string,
+            query.year,
+            {
+                size: query.size,
+                cuenca: query.cuenca,
+                system: query.system
+            },
+            req.user
+        );
+        return res.status(200).json(data);
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message });
+        }
+        if (err?.issues) {
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        }
+        console.error("getStatsComparisonHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
 
 export async function upsertMonthlyStatisticHandler(req: Request, res: Response) {
     try {

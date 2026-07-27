@@ -8,6 +8,8 @@
     "start": "node dist/app.js",
     "dev": "nodemon dist/app.js",
     "build": "tsc",
+    "test": "npm run build && node --test dist/services/stats-comparison.service.test.js",
+    "seed:comparison": "node prisma/seed.js",
     "postinstall": "prisma generate"
   },
   "keywords": [],
