@@ -5,6 +5,7 @@ import {
     deleteBillingPlanHandler,
     generateBillingInstallmentsHandler,
     getBillingPlansHandler,
+    getProducerTierPlansHandler,
     getBillingSettingsHandler,
     getMyBillingSummaryHandler,
     listBillingInstallmentsHandler,
@@ -13,6 +14,7 @@ import {
     markBillingInstallmentPaidHandler,
     markBillingInstallmentPendingHandler,
     previewProducerBillingHandler,
+    replaceProducerTierPlansHandler,
     updateBillingPlanHandler,
     updateBillingSettingsHandler,
 } from "../controller/billing.controller.js";
@@ -34,6 +36,8 @@ router.get("/cron/billing-promotions", processBillingPromotionNotificationsHandl
 
 router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHandler);
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
+router.get("/plans/producer-tiers", requireAuth, requireRole([Role.ADMIN]), getProducerTierPlansHandler);
+router.put("/plans/producer-tiers", requireAuth, requireRole([Role.ADMIN]), replaceProducerTierPlansHandler);
 router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPlanHandler);
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
-import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, updateBillingPlanHandler, updateBillingSettingsHandler, } from "../controller/billing.controller.js";
+import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getProducerTierPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, replaceProducerTierPlansHandler, updateBillingPlanHandler, updateBillingSettingsHandler, } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 import { cancelBillingPromotionHandler, createBillingPromotionHandler, getBillingPromotionAlertsHandler, listBillingPromotionsHandler, processBillingPromotionNotificationsHandler, updateBillingPromotionHandler, } from "../controller/billing-promotion.controller.js";
 const router = Router();
@@ -9,6 +9,8 @@ router.get("/billing/me/installments", requireAuth, listMyBillingInstallmentsHan
 router.get("/cron/billing-promotions", processBillingPromotionNotificationsHandler);
 router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHandler);
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
+router.get("/plans/producer-tiers", requireAuth, requireRole([Role.ADMIN]), getProducerTierPlansHandler);
+router.put("/plans/producer-tiers", requireAuth, requireRole([Role.ADMIN]), replaceProducerTierPlansHandler);
 router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPlanHandler);
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);

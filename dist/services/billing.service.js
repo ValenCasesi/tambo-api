@@ -1,6 +1,7 @@
 import { BillingCycle, BillingInstallmentStatus, BillingPaymentMethod, BillingPlanType, EntityStatus, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { findBillingPromotionForDate, getMyCurrentBillingPromotion } from "./billing-promotion.service.js";
+import { getProducerTierName, isVoInProducerTier, validateProducerTierConfiguration, } from "./producer-tier-config.js";
 const BILLING_ACTIVITY_WINDOW_MONTHS = 3;
 const BILLING_SETTINGS_ID = 1;
 const AUTO_DEBIT_DISCOUNT_PERCENT = 20;
@@ -145,6 +146,72 @@ export async function getBillingPlans() {
     });
     return plans.map(serializePlan);
 }
+export async function getProducerTierPlans() {
+    const plans = await prisma.billingPlan.findMany({
+        where: {
+            targetRole: Role.PRODUCTOR,
+            planType: BillingPlanType.SIGLEA_LITERS,
+            isBasic: false,
+            isActive: true,
+        },
+        orderBy: { minVo: "asc" },
+    });
+    return plans.map(serializePlan);
+}
+export async function replaceProducerTierPlans(tiers) {
+    validateProducerTierConfiguration(tiers);
+    const plans = await prisma.$transaction(async (tx) => {
+        const requestedIds = tiers.flatMap((tier) => tier.id ? [tier.id] : []);
+        const existingPlans = requestedIds.length > 0
+            ? await tx.billingPlan.findMany({ where: { id: { in: requestedIds } } })
+            : [];
+        const existingById = new Map(existingPlans.map((plan) => [plan.id, plan]));
+        for (const id of requestedIds) {
+            const existing = existingById.get(id);
+            if (!existing
+                || existing.targetRole !== Role.PRODUCTOR
+                || existing.planType !== BillingPlanType.SIGLEA_LITERS
+                || existing.isBasic) {
+                throw { status: 400, message: "Uno de los planes no corresponde a un tramo de productor" };
+            }
+        }
+        const activeIds = [];
+        for (const tier of tiers) {
+            const data = {
+                name: getProducerTierName(tier.minVo, tier.maxVo),
+                targetRole: Role.PRODUCTOR,
+                planType: BillingPlanType.SIGLEA_LITERS,
+                billingCycle: BillingCycle.MONTHLY,
+                minVo: tier.minVo,
+                maxVo: tier.maxVo,
+                sigleaLiters: tier.sigleaLiters,
+                fixedPrice: null,
+                isActive: true,
+                isDefault: false,
+                isBasic: false,
+            };
+            const saved = tier.id
+                ? await tx.billingPlan.update({ where: { id: tier.id }, data })
+                : await tx.billingPlan.create({ data });
+            activeIds.push(saved.id);
+        }
+        await tx.billingPlan.updateMany({
+            where: {
+                targetRole: Role.PRODUCTOR,
+                planType: BillingPlanType.SIGLEA_LITERS,
+                isBasic: false,
+                isActive: true,
+                id: { notIn: activeIds },
+            },
+            data: { isActive: false },
+        });
+        return tx.billingPlan.findMany({
+            where: { id: { in: activeIds } },
+            orderBy: { minVo: "asc" },
+        });
+    });
+    return plans.map(serializePlan);
+}
 export async function getBillingSettings() {
     const settings = await prisma.billingSettings.findUnique({
         where: { id: BILLING_SETTINGS_ID },
@@ -267,6 +334,14 @@ export async function deleteBillingPlan(id) {
     const existing = await prisma.billingPlan.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Plan no encontrado" };
+    if (existing.targetRole === Role.PRODUCTOR
+        && existing.planType === BillingPlanType.SIGLEA_LITERS
+        && !existing.isBasic) {
+        throw {
+            status: 400,
+            message: "Los tramos de productor se administran desde la configuración conjunta de planes por VO",
+        };
+    }
     const [assignedUsers, assignedActiveCompanies, linkedInstallments, linkedItems] = await Promise.all([
         prisma.user.count({ where: { billingPlanId: id } }),
         prisma.user.count({
@@ -358,7 +433,7 @@ function matchTierPlan(tierPlans, vo) {
             continue;
         const minVo = Number(plan.minVo);
         const maxVo = plan.maxVo === null ? null : Number(plan.maxVo);
-        if (minVo > vo || (maxVo !== null && maxVo < vo))
+        if (!isVoInProducerTier(vo, minVo, maxVo))
             continue;
         if (!best || Number(best.minVo) < minVo)
             best = plan;

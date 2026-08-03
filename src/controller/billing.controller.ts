@@ -6,6 +6,7 @@ import {
     deleteBillingPlan,
     generateBillingInstallments,
     getBillingPlans,
+    getProducerTierPlans,
     getBillingSettings,
     getMyBillingSummary,
     listBillingInstallments,
@@ -14,6 +15,7 @@ import {
     markBillingInstallmentPaid,
     markBillingInstallmentPending,
     previewProducerBilling,
+    replaceProducerTierPlans,
     updateBillingPlan,
     updateBillingSettings,
 } from "../services/billing.service.js";
@@ -34,6 +36,19 @@ const planSchema = z.object({
 });
 
 const updatePlanSchema = planSchema.partial();
+
+const producerTierSchema = z.object({
+    id: z.string().uuid().optional(),
+    minVo: z.coerce.number().int().min(0),
+    // Evaluar null antes del coercion: Number(null) es 0 y rompería el
+    // significado de "sin límite" del último tramo.
+    maxVo: z.union([z.null(), z.coerce.number().int().min(0)]),
+    sigleaLiters: z.coerce.number().positive(),
+});
+
+export const producerTiersSchema = z.object({
+    tiers: z.array(producerTierSchema).min(1),
+});
 
 const generateSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM"),
@@ -73,6 +88,27 @@ export async function getBillingPlansHandler(_req: Request, res: Response) {
         return res.status(200).json(plans);
     } catch (err: any) {
         console.error("getBillingPlansHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function getProducerTierPlansHandler(_req: Request, res: Response) {
+    try {
+        return res.status(200).json(await getProducerTierPlans());
+    } catch (err) {
+        console.error("getProducerTierPlansHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function replaceProducerTierPlansHandler(req: Request, res: Response) {
+    try {
+        const { tiers } = producerTiersSchema.parse(req.body);
+        return res.status(200).json(await replaceProducerTierPlans(tiers));
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("replaceProducerTierPlansHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
