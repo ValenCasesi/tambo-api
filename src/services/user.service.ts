@@ -2,6 +2,7 @@ import { BillingCycle, BillingPaymentMethod, BillingPlanType, Role } from "@pris
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
+import { getUserBillingSchedule } from "./billing.service.js";
 
 type CreateUserInput = {
     firstName: string;
@@ -114,7 +115,6 @@ export async function createUser(input: CreateUserInput) {
         phone,
         imageUrl,
         billingPlanId,
-        billingCycle = BillingCycle.MONTHLY,
         billingDiscountPercent = 0,
         billingPaymentMethod = BillingPaymentMethod.TRANSFER,
     } = input;
@@ -148,9 +148,7 @@ export async function createUser(input: CreateUserInput) {
             localidad,
             imageUrl,
             billingPlanId: safeBillingPlanId,
-            billingCycle: role === Role.EMPRESA
-                ? BillingCycle.MONTHLY
-                : billingCycle as BillingCycle,
+            billingCycle: BillingCycle.MONTHLY,
             billingDiscountPercent: billingDiscountPercent ?? 0,
             billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod,
             status: isPending ? "PENDING" : "ACTIVE"
@@ -211,6 +209,9 @@ export async function updateUser(input: UpdateUserInput) {
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
+    if (billingCycle !== undefined && billingCycle !== existing.billingCycle) {
+        throw { status: 400, message: "La frecuencia de cobro se modifica desde la acción específica de facturación" };
+    }
 
     if (email && email !== existing.email) {
         const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -254,9 +255,6 @@ export async function updateUser(input: UpdateUserInput) {
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
-            ...(billingCycle !== undefined && nextRole !== Role.EMPRESA && {
-                billingCycle: billingCycle as BillingCycle,
-            }),
             ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
             ...(billingPaymentMethod !== undefined && { billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod }),
             ...billingPlanUpdate,
@@ -347,12 +345,15 @@ export async function getAllUsers(filters: UserFilters = {}) {
         })
         .map(({ user }) => user);
 
-    return filteredUsers.map((u) => {
+    return Promise.all(filteredUsers.map(async (u) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _pwd, billingPromotions, ...safe } = u;
         const currentBillingPromotion = billingPromotions[0];
         return {
             ...safe,
+            billingSchedule: u.role === Role.PRODUCTOR
+                ? await getUserBillingSchedule(u.id, u.billingCycle)
+                : null,
             currentBillingPromotion: currentBillingPromotion
                 ? {
                     ...currentBillingPromotion,
@@ -362,7 +363,7 @@ export async function getAllUsers(filters: UserFilters = {}) {
                 }
                 : null,
         };
-    });
+    }));
 }
 
 async function validateBillingPlanForUser(role: Role, billingPlanId?: string | null) {

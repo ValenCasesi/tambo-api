@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getProducerTierPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, replaceProducerTierPlans, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getProducerTierPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, replaceProducerTierPlans, updateProducerBillingCycle, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -46,6 +46,10 @@ const listMyInstallmentsSchema = listInstallmentsSchema.pick({
 });
 const previewBillingSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+});
+const updateProducerCycleSchema = z.object({
+    billingCycle: z.nativeEnum(BillingCycle),
 });
 const billingSettingsSchema = z.object({
     whatsappNumber: z.preprocess((value) => value === "" ? null : value, z.string().regex(/^\d{7,15}$/, "El WhatsApp debe estar en formato internacional, solo números").nullable()),
@@ -169,7 +173,7 @@ export async function previewProducerBillingHandler(req, res) {
     try {
         const userId = req.params.userId;
         const parsed = previewBillingSchema.parse(req.query);
-        const preview = await previewProducerBilling(userId, parsed.period);
+        const preview = await previewProducerBilling(userId, parsed.period, parsed.billingCycle);
         return res.status(200).json(preview);
     }
     catch (err) {
@@ -178,6 +182,22 @@ export async function previewProducerBillingHandler(req, res) {
         if (err?.issues)
             return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("previewProducerBillingHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function updateProducerBillingCycleHandler(req, res) {
+    try {
+        const userId = req.params.userId;
+        const { billingCycle } = updateProducerCycleSchema.parse(req.body);
+        return res.status(200).json(await updateProducerBillingCycle(userId, billingCycle));
+    }
+    catch (err) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
+        }
+        if (err?.issues)
+            return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("updateProducerBillingCycleHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
-import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getProducerTierPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, replaceProducerTierPlansHandler, updateBillingPlanHandler, updateBillingSettingsHandler, } from "../controller/billing.controller.js";
+import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getProducerTierPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, replaceProducerTierPlansHandler, updateBillingPlanHandler, updateProducerBillingCycleHandler, updateBillingSettingsHandler, } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 import { cancelBillingPromotionHandler, createBillingPromotionHandler, getBillingPromotionAlertsHandler, listBillingPromotionsHandler, processBillingPromotionNotificationsHandler, updateBillingPromotionHandler, } from "../controller/billing-promotion.controller.js";
 const router = Router();
@@ -15,6 +15,7 @@ router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPl
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
 router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
+router.put("/billing/users/:userId/cycle", requireAuth, requireRole([Role.ADMIN]), updateProducerBillingCycleHandler);
 router.get("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), listBillingPromotionsHandler);
 router.post("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), createBillingPromotionHandler);
 router.put("/billing/promotions/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPromotionHandler);

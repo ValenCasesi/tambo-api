@@ -470,11 +470,11 @@ model Sponsor {
 // ==========================================
 
 model BillingPlan {
-  id         String          @id @default(uuid())
-  name       String
-  targetRole Role
-  planType   BillingPlanType
-  billingCycle BillingCycle  @default(MONTHLY)
+  id           String          @id @default(uuid())
+  name         String
+  targetRole   Role
+  planType     BillingPlanType
+  billingCycle BillingCycle    @default(MONTHLY)
 
   minVo        Decimal? @db.Decimal(10, 2)
   maxVo        Decimal? @db.Decimal(10, 2)
@@ -521,6 +521,7 @@ model BillingInstallment {
   sigleaLiterPrice               Decimal?     @db.Decimal(12, 2)
   voUsed                         Decimal?     @db.Decimal(10, 2)
   billingCycleSnapshot           BillingCycle @default(MONTHLY)
+  priceMultiplierSnapshot        Decimal      @default(1) @db.Decimal(5, 2)
   billingPromotionId             String?
   billingPromotionReasonSnapshot String?      @db.VarChar(500)
   specialDiscountPercentSnapshot Decimal?     @db.Decimal(5, 2)

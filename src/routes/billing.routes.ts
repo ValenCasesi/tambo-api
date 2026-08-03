@@ -16,6 +16,7 @@ import {
     previewProducerBillingHandler,
     replaceProducerTierPlansHandler,
     updateBillingPlanHandler,
+    updateProducerBillingCycleHandler,
     updateBillingSettingsHandler,
 } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
@@ -42,6 +43,7 @@ router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPl
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
 router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
+router.put("/billing/users/:userId/cycle", requireAuth, requireRole([Role.ADMIN]), updateProducerBillingCycleHandler);
 router.get("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), listBillingPromotionsHandler);
 router.post("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), createBillingPromotionHandler);
 router.put("/billing/promotions/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPromotionHandler);

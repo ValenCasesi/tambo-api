@@ -47,6 +47,7 @@ type ListInstallmentsFilters = {
 const BILLING_ACTIVITY_WINDOW_MONTHS = 3;
 const BILLING_SETTINGS_ID = 1;
 const AUTO_DEBIT_DISCOUNT_PERCENT = 20;
+export const PRODUCER_ANNUAL_PRICE_MULTIPLIER = 10;
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
     if (value === null || value === undefined) return null;
@@ -76,8 +77,18 @@ function getBillingCycle(value: BillingCycle | null | undefined) {
     return value === BillingCycle.ANNUAL ? BillingCycle.ANNUAL : BillingCycle.MONTHLY;
 }
 
-function getCycleMultiplier(cycle: BillingCycle) {
-    return cycle === BillingCycle.ANNUAL ? 12 : 1;
+export function getProducerPriceMultiplier(cycle: BillingCycle) {
+    return cycle === BillingCycle.ANNUAL ? PRODUCER_ANNUAL_PRICE_MULTIPLIER : 1;
+}
+
+export function calculateProducerCycleCharge(monthlySigleaLiters: number, sigleaLiterPrice: number, cycle: BillingCycle) {
+    const priceMultiplier = getProducerPriceMultiplier(cycle);
+    const cycleSigleaLiters = round2(monthlySigleaLiters * priceMultiplier);
+    return {
+        priceMultiplier,
+        cycleSigleaLiters,
+        grossAmount: round2(cycleSigleaLiters * sigleaLiterPrice),
+    };
 }
 
 function addMonthsToPeriod(period: string, monthsToAdd: number) {
@@ -95,6 +106,21 @@ function addMonthsToPeriod(period: string, monthsToAdd: number) {
     }
 
     return `${year}${String(month).padStart(2, "0")}`;
+}
+
+export function getBillingPeriodEnd(period: string, cycle: BillingCycle) {
+    return cycle === BillingCycle.ANNUAL ? addMonthsToPeriod(period, 11) : null;
+}
+
+function getCurrentPeriodInArgentina() {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Argentina/Cordoba",
+        year: "numeric",
+        month: "2-digit",
+    }).formatToParts(new Date());
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    return `${year}${month}`;
 }
 
 function applyDiscount(grossAmount: number, discountPercent: number) {
@@ -152,6 +178,7 @@ function serializeInstallment(installment: any) {
         sigleaLitersSnapshot: toNumber(installment.sigleaLitersSnapshot),
         fixedPriceSnapshot: toNumber(installment.fixedPriceSnapshot),
         billingCycleSnapshot: installment.billingCycleSnapshot ?? BillingCycle.MONTHLY,
+        priceMultiplierSnapshot: toNumber(installment.priceMultiplierSnapshot) ?? 1,
         specialDiscountPercentSnapshot: toNumber(installment.specialDiscountPercentSnapshot),
         effectiveStatus: getEffectiveStatus(installment.status, installment.dueDate),
         plan: installment.plan ? serializePlan(installment.plan) : null,
@@ -528,6 +555,74 @@ async function getLatestVoPerTambo(userId: string, period: string): Promise<Tamb
     return [...latestByTamboId.values()];
 }
 
+type ExactTamboVoContext = {
+    tambos: Array<{ id: string; name: string }>;
+    tamboVos: TamboVo[];
+    missingTambos: Array<{ tamboId: string; tamboName: string }>;
+};
+
+async function getExactVoPerTambo(userId: string, period: string): Promise<ExactTamboVoContext> {
+    const tambos = await prisma.tambo.findMany({
+        where: { userId, status: EntityStatus.ACTIVE },
+        select: { id: true, name: true },
+    });
+    if (tambos.length === 0) return { tambos, tamboVos: [], missingTambos: [] };
+
+    const stats = await prisma.monthlyStatistic.findMany({
+        where: {
+            tamboId: { in: tambos.map((tambo) => tambo.id) },
+            period,
+        },
+        select: { tamboId: true, period: true, vacasOrdene: true },
+    });
+    const statByTamboId = new Map(stats.map((stat) => [stat.tamboId, stat]));
+    const tamboVos: TamboVo[] = [];
+    const missingTambos: ExactTamboVoContext["missingTambos"] = [];
+
+    for (const tambo of tambos) {
+        const stat = statByTamboId.get(tambo.id);
+        if (!stat) {
+            missingTambos.push({ tamboId: tambo.id, tamboName: tambo.name });
+            continue;
+        }
+        tamboVos.push({
+            tamboId: tambo.id,
+            tamboName: tambo.name,
+            vo: Number(stat.vacasOrdene),
+            voPeriod: stat.period,
+        });
+    }
+
+    return { tambos, tamboVos, missingTambos };
+}
+
+export async function getUserBillingSchedule(userId: string, configuredCycle: BillingCycle, currentPeriod = getCurrentPeriodInArgentina()) {
+    const currentCoverage = await prisma.billingInstallment.findFirst({
+        where: {
+            userId,
+            period: { lte: currentPeriod },
+            OR: [
+                { periodEnd: { gte: currentPeriod } },
+                { periodEnd: null, period: currentPeriod },
+            ],
+        },
+        orderBy: [{ periodEnd: "desc" }, { period: "desc" }],
+        select: { billingCycleSnapshot: true, period: true, periodEnd: true },
+    });
+    const coverageThrough = currentCoverage?.periodEnd ?? currentCoverage?.period ?? null;
+
+    return {
+        configuredCycle,
+        currentCoverage: currentCoverage ? {
+            billingCycle: currentCoverage.billingCycleSnapshot,
+            period: currentCoverage.period,
+            periodEnd: currentCoverage.periodEnd,
+        } : null,
+        coverageThrough,
+        effectivePeriod: coverageThrough ? addMonthsToPeriod(coverageThrough, 1) : currentPeriod,
+    };
+}
+
 type ProducerPlansContext = {
     tierPlans: BillingPlan[];
     basicPlan: BillingPlan | null;
@@ -599,10 +694,10 @@ async function createInstallmentForUser(
     const billingCycle = user.role === Role.EMPRESA
         ? getBillingCycle(user.billingPlan?.billingCycle)
         : getBillingCycle(user.billingCycle);
-    const cycleMultiplier = user.role === Role.PRODUCTOR
-        ? getCycleMultiplier(billingCycle)
+    const priceMultiplier = user.role === Role.PRODUCTOR
+        ? getProducerPriceMultiplier(billingCycle)
         : 1;
-    const periodEnd = billingCycle === BillingCycle.ANNUAL ? addMonthsToPeriod(input.period, 11) : null;
+    const periodEnd = getBillingPeriodEnd(input.period, billingCycle);
 
     const existing = await prisma.billingInstallment.findFirst({
         where: {
@@ -628,7 +723,22 @@ async function createInstallmentForUser(
 
     if (user.role === Role.PRODUCTOR) {
         const price = input.sigleaLiterPrice;
-        const tamboVos = await getLatestVoPerTambo(user.id, input.period);
+        const exactContext = billingCycle === BillingCycle.ANNUAL
+            ? await getExactVoPerTambo(user.id, input.period)
+            : null;
+        const tamboVos = exactContext?.tamboVos ?? await getLatestVoPerTambo(user.id, input.period);
+
+        if (
+            billingCycle === BillingCycle.ANNUAL
+            && (exactContext!.tambos.length === 0 || exactContext!.missingTambos.length > 0)
+        ) {
+            return {
+                status: "SKIPPED_MISSING_CURRENT_VO" as const,
+                userId: user.id,
+                tambos: exactContext!.missingTambos,
+                noActiveTambos: exactContext!.tambos.length === 0,
+            };
+        }
 
         if (tamboVos.length === 0) {
             // Sin VO en la ventana de actividad: se cobra el Plan Básico
@@ -732,21 +842,21 @@ async function createInstallmentForUser(
         return { status: "SKIPPED_NO_PLAN" as const, userId: user.id, tambos: [] };
     }
 
-    if (cycleMultiplier > 1) {
+    if (priceMultiplier > 1) {
         for (const item of items) {
-            item.amount = round2(item.amount * cycleMultiplier);
+            item.amount = round2(item.amount * priceMultiplier);
             item.sigleaLitersSnapshot = item.sigleaLitersSnapshot === null
                 ? null
-                : round2(item.sigleaLitersSnapshot * cycleMultiplier);
+                : round2(item.sigleaLitersSnapshot * priceMultiplier);
         }
 
-        header.amount = round2(header.amount * cycleMultiplier);
+        header.amount = round2(header.amount * priceMultiplier);
         header.sigleaLitersSnapshot = header.sigleaLitersSnapshot === null
             ? null
-            : round2(header.sigleaLitersSnapshot * cycleMultiplier);
+            : round2(header.sigleaLitersSnapshot * priceMultiplier);
         header.fixedPriceSnapshot = header.fixedPriceSnapshot === null
             ? null
-            : round2(header.fixedPriceSnapshot * cycleMultiplier);
+            : round2(header.fixedPriceSnapshot * priceMultiplier);
     }
 
     const billingPromotion = await findBillingPromotionForDate(user.id, input.dueDate);
@@ -774,6 +884,7 @@ async function createInstallmentForUser(
                 sigleaLiterPrice: input.sigleaLiterPrice,
                 voUsed: header.voUsed,
                 billingCycleSnapshot: billingCycle,
+                priceMultiplierSnapshot: priceMultiplier,
                 billingPromotionId: billingPromotion?.id ?? null,
                 billingPromotionReasonSnapshot: billingPromotion?.reason ?? null,
                 specialDiscountPercentSnapshot: billingPromotion?.discountPercent ?? null,
@@ -901,6 +1012,11 @@ export async function generateBillingInstallments(input: GenerateInstallmentsInp
         skippedNoBasicPlan: [] as string[],
         skippedNoSigleaPrice: [] as string[],
         skippedOverlaps: [] as string[],
+        skippedMissingCurrentVo: [] as Array<{
+            userId: string;
+            tambos: Array<{ tamboId: string; tamboName: string }>;
+            noActiveTambos: boolean;
+        }>,
     };
 
     for (const user of users) {
@@ -911,6 +1027,11 @@ export async function generateBillingInstallments(input: GenerateInstallmentsInp
         if (outcome.status === "SKIPPED_NO_BASIC_PLAN") result.skippedNoBasicPlan.push(outcome.userId);
         if (outcome.status === "SKIPPED_NO_SIGLEA_PRICE") result.skippedNoSigleaPrice.push(outcome.userId);
         if (outcome.status === "SKIPPED_OVERLAP") result.skippedOverlaps.push(outcome.userId);
+        if (outcome.status === "SKIPPED_MISSING_CURRENT_VO") result.skippedMissingCurrentVo.push({
+            userId: outcome.userId,
+            tambos: outcome.tambos,
+            noActiveTambos: outcome.noActiveTambos,
+        });
     }
 
     return {
@@ -923,6 +1044,7 @@ export async function generateBillingInstallments(input: GenerateInstallmentsInp
             skippedNoBasicPlan: result.skippedNoBasicPlan.length,
             skippedNoSigleaPrice: result.skippedNoSigleaPrice.length,
             skippedOverlaps: result.skippedOverlaps.length,
+            skippedMissingCurrentVo: result.skippedMissingCurrentVo.length,
         },
     };
 }
@@ -935,48 +1057,83 @@ type BillingPreviewItem = {
     planId: string;
     planName: string;
     sigleaLiters: number;
+    cycleSigleaLiters: number;
 };
 
 // Desglose estimado de la próxima cuota de un productor, con la misma lógica
 // que la generación (tramos por tambo, ventana de actividad y Plan Básico)
-export async function previewProducerBilling(userId: string, period?: string) {
+export async function previewProducerBilling(userId: string, period?: string, requestedCycle?: BillingCycle) {
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true },
+        select: { id: true, role: true, status: true, billingCycle: true },
     });
     if (!user) throw { status: 404, message: "Usuario no encontrado" };
     if (user.role !== Role.PRODUCTOR) {
         throw { status: 400, message: "El desglose de plan solo aplica a productores" };
     }
 
-    const now = new Date();
-    const effectivePeriod = period ?? `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const previewPeriod = period ?? getCurrentPeriodInArgentina();
+    const billingCycle = getBillingCycle(requestedCycle ?? user.billingCycle);
+    const priceMultiplier = getProducerPriceMultiplier(billingCycle);
 
-    const [tambos, tamboVos, producerPlans] = await Promise.all([
-        prisma.tambo.findMany({
-            where: { userId, status: EntityStatus.ACTIVE },
-            select: { id: true, name: true },
-        }),
-        getLatestVoPerTambo(userId, effectivePeriod),
+    const [exactContext, recentVos, producerPlans, billingSchedule] = await Promise.all([
+        getExactVoPerTambo(userId, previewPeriod),
+        billingCycle === BillingCycle.MONTHLY ? getLatestVoPerTambo(userId, previewPeriod) : Promise.resolve([]),
         getProducerPlansContext(),
+        getUserBillingSchedule(userId, billingCycle),
     ]);
+    const tambos = exactContext.tambos;
+    const tamboVos = billingCycle === BillingCycle.ANNUAL ? exactContext.tamboVos : recentVos;
 
     const voTamboIds = new Set(tamboVos.map((tambo) => tambo.tamboId));
-    const tambosWithoutData = tambos
-        .filter((tambo) => !voTamboIds.has(tambo.id))
-        .map((tambo) => ({ tamboId: tambo.id, tamboName: tambo.name }));
+    const tambosWithoutData = billingCycle === BillingCycle.ANNUAL
+        ? exactContext.missingTambos
+        : tambos
+            .filter((tambo) => !voTamboIds.has(tambo.id))
+            .map((tambo) => ({ tamboId: tambo.id, tamboName: tambo.name }));
 
     const base = {
         userId: user.id,
-        period: effectivePeriod,
-        windowPeriods: getRecentPeriods(effectivePeriod, BILLING_ACTIVITY_WINDOW_MONTHS),
+        period: previewPeriod,
+        billingCycle,
+        priceMultiplier,
+        coverageMonths: billingCycle === BillingCycle.ANNUAL ? 12 : 1,
+        windowPeriods: billingCycle === BillingCycle.ANNUAL
+            ? [previewPeriod]
+            : getRecentPeriods(previewPeriod, BILLING_ACTIVITY_WINDOW_MONTHS),
         tambosWithoutData,
+        billingSchedule,
     };
 
+    if (billingCycle === BillingCycle.ANNUAL && tambos.length === 0) {
+        return {
+            ...base,
+            mode: "SIN_TAMBOS" as const,
+            eligible: false,
+            eligibilityReason: "El productor no tiene tambos activos.",
+            items: [] as BillingPreviewItem[],
+            unmatchedTambos: [],
+            totalSigleaLiters: 0,
+            cycleSigleaLiters: 0,
+        };
+    }
+
     if (tamboVos.length === 0) {
+        if (billingCycle === BillingCycle.ANNUAL) {
+            return {
+                ...base,
+                mode: "TAMBOS" as const,
+                eligible: false,
+                eligibilityReason: "Todos los tambos activos deben tener VO cargado en el mes corriente.",
+                items: [] as BillingPreviewItem[],
+                unmatchedTambos: [],
+                totalSigleaLiters: 0,
+                cycleSigleaLiters: 0,
+            };
+        }
         const basicPlan = producerPlans.basicPlan;
         if (!basicPlan || basicPlan.sigleaLiters === null) {
-            return { ...base, mode: "SIN_PLAN_BASICO" as const, items: [] as BillingPreviewItem[], unmatchedTambos: [], totalSigleaLiters: 0 };
+            return { ...base, mode: "SIN_PLAN_BASICO" as const, eligible: false, items: [] as BillingPreviewItem[], unmatchedTambos: [], totalSigleaLiters: 0, cycleSigleaLiters: 0 };
         }
 
         const liters = Number(basicPlan.sigleaLiters);
@@ -988,9 +1145,10 @@ export async function previewProducerBilling(userId: string, period?: string) {
             planId: basicPlan.id,
             planName: basicPlan.name,
             sigleaLiters: liters,
+            cycleSigleaLiters: liters,
         }];
 
-        return { ...base, mode: "BASICO" as const, items, unmatchedTambos: [], totalSigleaLiters: liters };
+        return { ...base, mode: "BASICO" as const, eligible: true, items, unmatchedTambos: [], totalSigleaLiters: liters, cycleSigleaLiters: liters };
     }
 
     const items: BillingPreviewItem[] = [];
@@ -1011,16 +1169,65 @@ export async function previewProducerBilling(userId: string, period?: string) {
             planId: tierPlan.id,
             planName: tierPlan.name,
             sigleaLiters: Number(tierPlan.sigleaLiters),
+            cycleSigleaLiters: round2(Number(tierPlan.sigleaLiters) * priceMultiplier),
         });
     }
+
+    const totalSigleaLiters = round2(items.reduce((sum, item) => sum + item.sigleaLiters, 0));
+    const eligible = unmatchedTambos.length === 0
+        && (billingCycle !== BillingCycle.ANNUAL || tambosWithoutData.length === 0);
 
     return {
         ...base,
         mode: "TAMBOS" as const,
+        eligible,
+        eligibilityReason: eligible
+            ? null
+            : tambosWithoutData.length > 0
+                ? "Todos los tambos activos deben tener VO cargado en el mes corriente."
+                : "Hay tambos cuyo VO no coincide con ningún tramo activo.",
         items,
         unmatchedTambos,
-        totalSigleaLiters: round2(items.reduce((sum, item) => sum + item.sigleaLiters, 0)),
+        totalSigleaLiters,
+        cycleSigleaLiters: round2(totalSigleaLiters * priceMultiplier),
     };
+}
+
+export async function updateProducerBillingCycle(userId: string, billingCycle: BillingCycle) {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, status: true, billingCycle: true },
+    });
+    if (!user) throw { status: 404, message: "Usuario no encontrado" };
+    if (user.role !== Role.PRODUCTOR) throw { status: 400, message: "La frecuencia individual solo aplica a productores" };
+    if (user.status !== EntityStatus.ACTIVE) throw { status: 400, message: "El productor debe estar activo para cambiar su frecuencia" };
+
+    if (user.billingCycle === billingCycle) {
+        return { ...user, billingSchedule: await getUserBillingSchedule(userId, billingCycle) };
+    }
+
+    if (billingCycle === BillingCycle.ANNUAL) {
+        const preview = await previewProducerBilling(userId, getCurrentPeriodInArgentina(), BillingCycle.ANNUAL);
+        if (!preview.eligible) {
+            throw {
+                status: 422,
+                message: ("eligibilityReason" in preview ? preview.eligibilityReason : null)
+                    ?? "No se puede activar el anual con los datos actuales",
+                details: {
+                    tambosWithoutData: preview.tambosWithoutData,
+                    unmatchedTambos: preview.unmatchedTambos,
+                },
+            };
+        }
+    }
+
+    const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { billingCycle },
+        select: { id: true, role: true, status: true, billingCycle: true },
+    });
+    const billingSchedule = await getUserBillingSchedule(userId, billingCycle);
+    return { ...updated, billingSchedule };
 }
 
 export async function listBillingInstallments(filters: ListInstallmentsFilters) {
@@ -1167,13 +1374,33 @@ async function getMyBillingEstimate(userId: string) {
     let planGrossAmount = 0;
     let planName = "";
     let billingCycle = getBillingCycle(user.billingCycle);
+    let priceMultiplier = 1;
 
     if (user.role === Role.PRODUCTOR) {
-        const currentPeriod = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-        const [tamboVos, producerPlans] = await Promise.all([
-            getLatestVoPerTambo(user.id, currentPeriod),
+        const currentPeriod = getCurrentPeriodInArgentina();
+        priceMultiplier = getProducerPriceMultiplier(billingCycle);
+        const [exactContext, recentVos, producerPlans] = await Promise.all([
+            billingCycle === BillingCycle.ANNUAL
+                ? getExactVoPerTambo(user.id, currentPeriod)
+                : Promise.resolve(null),
+            billingCycle === BillingCycle.MONTHLY
+                ? getLatestVoPerTambo(user.id, currentPeriod)
+                : Promise.resolve([]),
             getProducerPlansContext(),
         ]);
+        if (
+            billingCycle === BillingCycle.ANNUAL
+            && (exactContext!.tambos.length === 0 || exactContext!.missingTambos.length > 0)
+        ) {
+            return {
+                available: false,
+                billingCycle,
+                reason: exactContext!.tambos.length === 0
+                    ? "No hay tambos activos para estimar el plan anual."
+                    : "Todos tus tambos deben tener VO cargado en el mes corriente para estimar el plan anual.",
+            };
+        }
+        const tamboVos = exactContext?.tamboVos ?? recentVos;
 
         if (tamboVos.length === 0) {
             const basicPlan = producerPlans.basicPlan;
@@ -1195,6 +1422,7 @@ async function getMyBillingEstimate(userId: string) {
             ));
             planName = matchedPlans.length === 1 ? matchedPlans[0]!.name : `Planes por tambo (${matchedPlans.length})`;
         }
+        planGrossAmount = round2(planGrossAmount * priceMultiplier);
     } else {
         const assignedPlan = user.billingPlan?.isActive
             && user.billingPlan.targetRole === Role.EMPRESA
@@ -1230,6 +1458,8 @@ async function getMyBillingEstimate(userId: string) {
         role: user.role,
         planName,
         billingCycle,
+        priceMultiplier,
+        coverageMonths: billingCycle === BillingCycle.ANNUAL ? 12 : 1,
         sigleaLiterPrice,
         paymentMethod: user.billingPaymentMethod,
         manualDiscountPercent,

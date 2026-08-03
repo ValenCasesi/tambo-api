@@ -16,6 +16,7 @@ import {
     markBillingInstallmentPending,
     previewProducerBilling,
     replaceProducerTierPlans,
+    updateProducerBillingCycle,
     updateBillingPlan,
     updateBillingSettings,
 } from "../services/billing.service.js";
@@ -73,6 +74,11 @@ const listMyInstallmentsSchema = listInstallmentsSchema.pick({
 
 const previewBillingSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM").optional(),
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+});
+
+const updateProducerCycleSchema = z.object({
+    billingCycle: z.nativeEnum(BillingCycle),
 });
 
 const billingSettingsSchema = z.object({
@@ -191,12 +197,27 @@ export async function previewProducerBillingHandler(req: Request, res: Response)
     try {
         const userId = req.params.userId as string;
         const parsed = previewBillingSchema.parse(req.query);
-        const preview = await previewProducerBilling(userId, parsed.period);
+        const preview = await previewProducerBilling(userId, parsed.period, parsed.billingCycle);
         return res.status(200).json(preview);
     } catch (err: any) {
         if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
         if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
         console.error("previewProducerBillingHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function updateProducerBillingCycleHandler(req: Request, res: Response) {
+    try {
+        const userId = req.params.userId as string;
+        const { billingCycle } = updateProducerCycleSchema.parse(req.body);
+        return res.status(200).json(await updateProducerBillingCycle(userId, billingCycle));
+    } catch (err: any) {
+        if (err?.status && err?.message) {
+            return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
+        }
+        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        console.error("updateProducerBillingCycleHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
