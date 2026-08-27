@@ -7,6 +7,43 @@ import {
 } from "@prisma/client";
 
 export const COMPARISON_MINIMUM_SAMPLE = 18;
+export const MARKET_ACCESS_MINIMUM_COMPLETION = 70;
+
+export const MARKET_ACCESS_INPUT_KEYS = [
+    "vacasOrdene",
+    "vacasSecas",
+    "litrosUsina",
+    "litrosDescarte",
+    "litrosGuachera",
+    "diasDeLeche",
+    "CantVaquillonasPrenadas",
+    "CantVacasPrenadas",
+    "CantVacasAbortadas",
+    "cantVaquillonasAbortadas",
+    "diasIPPS",
+    "porcentajeIPPS",
+    "partosVaquillonas",
+    "partosVacas",
+    "ternerosMachosNacidosVivos",
+    "ternerasHembrasNacidasVivas",
+    "ternerosMuertosPeriparto",
+    "cantNacimientosMellizos",
+    "ternerosIngresadosGuachera",
+    "ternerosMuertosGuachera",
+    "cantTernerasHembrasIngRecria",
+    "cantHembrasRecriaHastaServMuertas",
+    "edadVaquillonasPrimerServicioMeses",
+    "cantVacasMetritis",
+    "CantVacasRetencionPlacenta",
+    "cantVacasCaidas",
+    "conteoCelulasSomaticas",
+    "conteoBacteriasTotales",
+    "casosClinicosMastitis",
+    "conteoCultivoPlacasPositivo",
+    "conteoCultivoPlacasContaminados",
+    "cantVacasMuertasMes",
+    "cantVacasVendidasMes"
+] as const;
 
 export type StatsComparisonFilters = {
     size?: TamboSize;
@@ -52,6 +89,8 @@ const CYCLE_METRIC_KEYS = [
 ] as const;
 
 const MONTHLY_DERIVED_METRIC_KEYS = [
+    "porcentajeVacasOrdene",
+    "porcentajeCrecimientoActual",
     "perdidaTernerosTotal",
     "perdidaTotalTerneras"
 ] as const;
@@ -64,10 +103,72 @@ const MONTHLY_COMPARISON_METRIC_KEYS = [
 type NumericLike = number | string | { toString(): string } | null | undefined;
 type AggregateRow = Record<string, NumericLike>;
 
+export type ClosedPeriod = {
+    period: string;
+    year: number;
+    month: number;
+};
+
+export type MarketAccessPeriod = ClosedPeriod & {
+    completed: number;
+    total: number;
+    completionPercentage: number;
+};
+
 const toFiniteNumber = (value: NumericLike) => {
     if (value === null || value === undefined) return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
+};
+
+export const getLastClosedPeriods = (now = new Date()): ClosedPeriod[] => {
+    const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Argentina/Cordoba",
+        year: "numeric",
+        month: "numeric"
+    }).formatToParts(now);
+    let year = Number(dateParts.find((part) => part.type === "year")?.value);
+    let month = Number(dateParts.find((part) => part.type === "month")?.value);
+
+    return Array.from({ length: 2 }, () => {
+        month -= 1;
+        if (month === 0) {
+            month = 12;
+            year -= 1;
+        }
+        return {
+            period: `${year}${String(month).padStart(2, "0")}`,
+            year,
+            month
+        };
+    });
+};
+
+export const evaluateMarketAccess = (
+    rows: AggregateRow[],
+    periods = getLastClosedPeriods()
+) => {
+    const rowsByPeriod = new Map(rows.map((row) => [String(row.period), row]));
+    const periodCompletion: MarketAccessPeriod[] = periods.map((period) => {
+        const row = rowsByPeriod.get(period.period);
+        const completed = row
+            ? MARKET_ACCESS_INPUT_KEYS.filter((key) => {
+                const value = toFiniteNumber(row[key]);
+                return value !== null && value !== 0;
+            }).length
+            : 0;
+        const total = MARKET_ACCESS_INPUT_KEYS.length;
+        const completionPercentage = Number(((completed / total) * 100).toFixed(1));
+        return { ...period, completed, total, completionPercentage };
+    });
+
+    return {
+        eligible: periodCompletion.every(
+            ({ completed, total }) => (completed / total) * 100 >= MARKET_ACCESS_MINIMUM_COMPLETION
+        ),
+        requiredPercentage: MARKET_ACCESS_MINIMUM_COMPLETION,
+        periods: periodCompletion
+    };
 };
 
 export function averageMetricRows(
@@ -87,13 +188,24 @@ export function averageMetricRows(
     }));
 }
 
-const addDerivedMonthlyMetrics = (row: AggregateRow): AggregateRow => {
+export const addDerivedMonthlyMetrics = (row: AggregateRow): AggregateRow => {
+    const vacasOrdene = toFiniteNumber(row.vacasOrdene);
+    const vacasTotales = toFiniteNumber(row.vacasTotales);
+    const crecimientoAnual = toFiniteNumber(row.crecimientoAnual);
     const natimortos = toFiniteNumber(row.porcentajeNatimortos);
     const guachera = toFiniteNumber(row.porcentajeTernerosMuertosGuacheraMes);
     const recria = toFiniteNumber(row.porcentajeMortandadRecriaMes);
 
     return {
         ...row,
+        porcentajeVacasOrdene:
+            vacasOrdene !== null && vacasTotales !== null && vacasTotales > 0
+                ? (vacasOrdene * 100) / vacasTotales
+                : null,
+        porcentajeCrecimientoActual:
+            crecimientoAnual !== null && vacasTotales !== null && vacasTotales > 0
+                ? (crecimientoAnual * 100) / (vacasTotales / 12)
+                : null,
         perdidaTernerosTotal:
             natimortos !== null && guachera !== null
                 ? natimortos + guachera
@@ -138,6 +250,34 @@ export async function getStatsComparison(
 
     if (selectedTambo.userId !== actor.id) {
         throw { status: 403, message: "No puedes comparar estadísticas de un tambo ajeno" };
+    }
+
+    const closedPeriods = getLastClosedPeriods();
+    const accessRows = await prisma.monthlyStatistic.findMany({
+        where: {
+            tamboId,
+            period: { in: closedPeriods.map(({ period }) => period) }
+        },
+        select: {
+            period: true,
+            ...Object.fromEntries(MARKET_ACCESS_INPUT_KEYS.map((key) => [key, true]))
+        }
+    }) as AggregateRow[];
+    const eligibility = evaluateMarketAccess(accessRows, closedPeriods);
+
+    if (!eligibility.eligible) {
+        return {
+            minimumSample: COMPARISON_MINIMUM_SAMPLE,
+            eligibility,
+            availability: { monthly: false, cycles: false },
+            filters: {
+                size: filters.size ?? null,
+                cuenca: filters.cuenca ?? null,
+                system: filters.system ?? null
+            },
+            monthly: [],
+            cycles: []
+        };
     }
 
     const peerTamboWhere = {
@@ -211,6 +351,7 @@ export async function getStatsComparison(
 
     return {
         minimumSample: COMPARISON_MINIMUM_SAMPLE,
+        eligibility,
         availability: {
             monthly: monthlyAvailable,
             cycles: cyclesAvailable

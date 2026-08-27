@@ -1,4 +1,4 @@
-import { BillingCycle, BillingInstallmentStatus, BillingPaymentMethod, BillingPlanType, EntityStatus, Role } from "@prisma/client";
+import { BillingCycle, BillingGenerationStatus, BillingGenerationTrigger, BillingInstallmentStatus, BillingPaymentMethod, BillingPlanType, EntityStatus, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { findBillingPromotionForDate, getMyCurrentBillingPromotion } from "./billing-promotion.service.js";
 import { getProducerTierName, isVoInProducerTier, validateProducerTierConfiguration, } from "./producer-tier-config.js";
@@ -236,21 +236,91 @@ export async function replaceProducerTierPlans(tiers) {
     });
     return plans.map(serializePlan);
 }
+const BILLING_SETTINGS_SELECT = {
+    whatsappNumber: true,
+    accountHolder: true,
+    accountTaxId: true,
+    bankName: true,
+    cbu: true,
+    alias: true,
+    sigleaLiterPrice: true,
+    installmentDueDay: true,
+    autoGenerateEnabled: true,
+};
 export async function getBillingSettings() {
     const settings = await prisma.billingSettings.findUnique({
         where: { id: BILLING_SETTINGS_ID },
-        select: { whatsappNumber: true },
+        select: BILLING_SETTINGS_SELECT,
     });
-    return { whatsappNumber: settings?.whatsappNumber ?? null };
+    return {
+        whatsappNumber: settings?.whatsappNumber ?? null,
+        accountHolder: settings?.accountHolder ?? null,
+        accountTaxId: settings?.accountTaxId ?? null,
+        bankName: settings?.bankName ?? null,
+        cbu: settings?.cbu ?? null,
+        alias: settings?.alias ?? null,
+        sigleaLiterPrice: toNumber(settings?.sigleaLiterPrice),
+        installmentDueDay: settings?.installmentDueDay ?? DEFAULT_INSTALLMENT_DUE_DAY,
+        autoGenerateEnabled: settings?.autoGenerateEnabled ?? true,
+    };
 }
+/** Actualiza sólo contacto y cuenta bancaria: nunca toca el precio Siglea. */
 export async function updateBillingSettings(input) {
-    const settings = await prisma.billingSettings.upsert({
+    await prisma.billingSettings.upsert({
         where: { id: BILLING_SETTINGS_ID },
-        create: { id: BILLING_SETTINGS_ID, whatsappNumber: input.whatsappNumber },
-        update: { whatsappNumber: input.whatsappNumber },
-        select: { whatsappNumber: true },
+        create: { id: BILLING_SETTINGS_ID, ...input },
+        update: input,
+        select: { id: true },
     });
-    return settings;
+    return getBillingSettings();
+}
+/** Ajustes del cron. Se guardan aparte para no pisar precio ni datos de cobro. */
+export async function updateBillingScheduleSettings(input) {
+    const dueDay = Math.min(28, Math.max(1, Math.trunc(input.installmentDueDay)));
+    await prisma.billingSettings.upsert({
+        where: { id: BILLING_SETTINGS_ID },
+        create: {
+            id: BILLING_SETTINGS_ID,
+            installmentDueDay: dueDay,
+            autoGenerateEnabled: input.autoGenerateEnabled,
+        },
+        update: {
+            installmentDueDay: dueDay,
+            autoGenerateEnabled: input.autoGenerateEnabled,
+        },
+        select: { id: true },
+    });
+    return getBillingSettings();
+}
+export async function getConfiguredSigleaLiterPrice() {
+    const settings = await prisma.billingSettings.findUnique({
+        where: { id: BILLING_SETTINGS_ID },
+        select: { sigleaLiterPrice: true },
+    });
+    return toNumber(settings?.sigleaLiterPrice);
+}
+/**
+ * Guarda el precio Siglea (no toca contacto ni datos bancarios) y devuelve
+ * cuántas cuotas hay para recalcular. El recálculo NO ocurre acá: lo dispara el
+ * cliente lote a lote vía `repriceUnpaidInstallmentsBatch`, para poder mostrar
+ * progreso y para que ninguna request se acerque al timeout del hosting.
+ */
+export async function updateSigleaLiterPrice(sigleaLiterPrice) {
+    if (!Number.isFinite(sigleaLiterPrice) || sigleaLiterPrice <= 0) {
+        throw { status: 400, message: "El precio del litro Siglea debe ser mayor a 0" };
+    }
+    const price = round2(sigleaLiterPrice);
+    await prisma.billingSettings.upsert({
+        where: { id: BILLING_SETTINGS_ID },
+        create: { id: BILLING_SETTINGS_ID, sigleaLiterPrice: price },
+        update: { sigleaLiterPrice: price },
+        select: { id: true },
+    });
+    return {
+        settings: await getBillingSettings(),
+        totalToReprice: await countUnpaidInstallments(),
+        batchSize: REPRICE_BATCH_SIZE,
+    };
 }
 export async function createBillingPlan(input) {
     validatePlanShape(input);
@@ -722,6 +792,170 @@ async function createInstallmentForUser(user, input, producerPlans) {
         throw err;
     }
 }
+const REPRICE_BATCH_SIZE = 25;
+const REPRICE_MAX_BATCH_SIZE = 100;
+const REPRICE_SELECT = {
+    id: true,
+    targetRoleSnapshot: true,
+    sigleaLitersSnapshot: true,
+    fixedPriceSnapshot: true,
+    discountPercentSnapshot: true,
+    items: { select: { id: true, sigleaLitersSnapshot: true } },
+};
+/**
+ * Calcula los montos de una cuota para un precio dado, respetando la base con
+ * la que se emitió: las de empresa sobre `fixedPriceSnapshot` y las de productor
+ * sobre los litros snapshot de sus items (o del encabezado si no tiene items).
+ * Los snapshots ya traen aplicado el multiplicador del ciclo, no se re-aplica.
+ * Devuelve null si la cuota no tiene base para recalcularse.
+ */
+function calculateRepricedInstallment(installment, sigleaLiterPrice) {
+    const isEmpresa = installment.targetRoleSnapshot === Role.EMPRESA;
+    const recalculatedItems = isEmpresa
+        ? []
+        : installment.items
+            .filter((item) => item.sigleaLitersSnapshot !== null)
+            .map((item) => ({
+            id: item.id,
+            amount: round2(Number(item.sigleaLitersSnapshot) * sigleaLiterPrice),
+        }));
+    let grossAmount = null;
+    if (recalculatedItems.length > 0) {
+        grossAmount = round2(recalculatedItems.reduce((total, item) => total + item.amount, 0));
+    }
+    else {
+        const base = isEmpresa
+            ? toNumber(installment.fixedPriceSnapshot)
+            : toNumber(installment.sigleaLitersSnapshot);
+        if (base !== null)
+            grossAmount = round2(base * sigleaLiterPrice);
+    }
+    if (grossAmount === null)
+        return null;
+    const discount = applyDiscount(grossAmount, clampDiscountPercent(installment.discountPercentSnapshot));
+    return {
+        amount: discount.amount,
+        grossAmount: discount.grossAmount,
+        discountAmount: discount.discountAmount,
+        items: recalculatedItems,
+    };
+}
+/** Cuotas impagas: PENDING incluye a las vencidas (OVERDUE se deriva de dueDate). */
+export async function countUnpaidInstallments() {
+    return prisma.billingInstallment.count({
+        where: { status: BillingInstallmentStatus.PENDING },
+    });
+}
+/**
+ * Cuenta las cuotas impagas que todavía no quedaron al precio configurado.
+ * Sirve para detectar un recálculo por lotes que quedó a medias.
+ */
+export async function countOutdatedUnpaidInstallments(sigleaLiterPrice) {
+    if (!sigleaLiterPrice || sigleaLiterPrice <= 0)
+        return 0;
+    return prisma.billingInstallment.count({
+        where: {
+            status: BillingInstallmentStatus.PENDING,
+            OR: [
+                { sigleaLiterPrice: null },
+                { sigleaLiterPrice: { not: sigleaLiterPrice } },
+            ],
+        },
+    });
+}
+export async function getSigleaRepriceStatus() {
+    const sigleaLiterPrice = await getConfiguredSigleaLiterPrice();
+    const [totalUnpaid, outdatedCount] = await Promise.all([
+        countUnpaidInstallments(),
+        countOutdatedUnpaidInstallments(sigleaLiterPrice),
+    ]);
+    return { sigleaLiterPrice, totalUnpaid, outdatedCount };
+}
+/**
+ * Recalcula un lote de cuotas impagas con el precio Siglea configurado y
+ * devuelve el cursor para continuar. Se procesa de a lotes acotados para que
+ * cada request entre cómoda en el timeout de 60s del hosting.
+ *
+ * El precio se lee de la configuración (no se recibe por parámetro) para que
+ * todos los lotes de una corrida usen la misma fuente de verdad. El recorrido
+ * es por cursor de `id` ascendente, así que es determinístico y reanudable.
+ */
+export async function repriceUnpaidInstallmentsBatch(options = {}) {
+    const sigleaLiterPrice = await getConfiguredSigleaLiterPrice();
+    if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
+        throw { status: 400, message: "No hay un precio del litro Siglea configurado" };
+    }
+    const batchSize = Math.min(REPRICE_MAX_BATCH_SIZE, Math.max(1, Math.trunc(options.batchSize ?? REPRICE_BATCH_SIZE)));
+    const cursor = options.cursor || null;
+    const installments = await prisma.billingInstallment.findMany({
+        where: { status: BillingInstallmentStatus.PENDING },
+        select: REPRICE_SELECT,
+        orderBy: { id: "asc" },
+        take: batchSize,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    let repricedCount = 0;
+    let skippedCount = 0;
+    if (installments.length > 0) {
+        await prisma.$transaction(async (tx) => {
+            for (const installment of installments) {
+                const recalculated = calculateRepricedInstallment(installment, sigleaLiterPrice);
+                if (!recalculated) {
+                    // Sin base snapshot no hay forma de recalcularla sin inventar datos.
+                    skippedCount += 1;
+                    continue;
+                }
+                await tx.billingInstallment.update({
+                    where: { id: installment.id },
+                    data: {
+                        amount: recalculated.amount,
+                        grossAmount: recalculated.grossAmount,
+                        discountAmount: recalculated.discountAmount,
+                        sigleaLiterPrice,
+                    },
+                });
+                for (const item of recalculated.items) {
+                    await tx.billingInstallmentItem.update({
+                        where: { id: item.id },
+                        data: { amount: item.amount },
+                    });
+                }
+                repricedCount += 1;
+            }
+        }, { timeout: 45_000 });
+    }
+    const nextCursor = installments.length === batchSize
+        ? installments[installments.length - 1].id
+        : null;
+    return {
+        processedCount: installments.length,
+        repricedCount,
+        skippedCount,
+        nextCursor,
+        done: nextCursor === null,
+    };
+}
+/**
+ * Recorre todos los lotes de una. Se usa desde scripts y tareas internas: la UI
+ * llama a `repriceUnpaidInstallmentsBatch` para poder mostrar el progreso.
+ */
+export async function repriceUnpaidInstallments(sigleaLiterPrice) {
+    if (!Number.isFinite(sigleaLiterPrice) || sigleaLiterPrice <= 0) {
+        return { repricedCount: 0, skippedCount: 0, processedCount: 0 };
+    }
+    let cursor = null;
+    let repricedCount = 0;
+    let skippedCount = 0;
+    let processedCount = 0;
+    do {
+        const batch = await repriceUnpaidInstallmentsBatch({ cursor });
+        repricedCount += batch.repricedCount;
+        skippedCount += batch.skippedCount;
+        processedCount += batch.processedCount;
+        cursor = batch.nextCursor;
+    } while (cursor !== null);
+    return { repricedCount, skippedCount, processedCount };
+}
 async function updatePendingProducerInstallments(period, sigleaLiterPrice) {
     if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
         return [];
@@ -779,7 +1013,17 @@ async function updatePendingProducerInstallments(period, sigleaLiterPrice) {
         return installments.map((installment) => installment.id);
     }, { timeout: 30_000 });
 }
-export async function generateBillingInstallments(input) {
+export async function generateBillingInstallments(rawInput) {
+    // El precio Siglea se administra desde la configuración de cobros: la
+    // generación siempre usa el vigente en lugar de recibirlo por request.
+    const configuredPrice = await getConfiguredSigleaLiterPrice();
+    if (!configuredPrice || configuredPrice <= 0) {
+        throw {
+            status: 400,
+            message: "Configurá el precio del litro Siglea en \"Configurar cobros\" antes de generar cuotas",
+        };
+    }
+    const input = { ...rawInput, sigleaLiterPrice: configuredPrice };
     const roleFilter = input.targetRole ? [input.targetRole] : [Role.PRODUCTOR, Role.EMPRESA];
     const selectedUserIds = input.userIds?.length ? input.userIds : input.userId ? [input.userId] : [];
     const users = await prisma.user.findMany({
@@ -838,6 +1082,232 @@ export async function generateBillingInstallments(input) {
             skippedMissingCurrentVo: result.skippedMissingCurrentVo.length,
         },
     };
+}
+// ---------------------------------------------------------------------------
+// Generación automática de cuotas (corridas por lotes reanudables)
+// ---------------------------------------------------------------------------
+const GENERATION_BATCH_SIZE = 10;
+const DEFAULT_INSTALLMENT_DUE_DAY = 10;
+/**
+ * Margen de trabajo por invocación. Vercel Hobby corta a los 60s, así que se
+ * deja lugar para cerrar la request. Igual el progreso se guarda lote a lote:
+ * si la función muriera de golpe, la corrida se reanuda sin perder lo hecho.
+ */
+const DEFAULT_GENERATION_TIME_BUDGET_MS = 45_000;
+function getGenerationTimeBudgetMs() {
+    const configured = Number(process.env.CRON_TIME_BUDGET_MS);
+    if (Number.isFinite(configured) && configured >= 5_000)
+        return Math.trunc(configured);
+    return DEFAULT_GENERATION_TIME_BUDGET_MS;
+}
+/** Fecha de vencimiento del período, con el día configurado en cobros. */
+export function buildDueDateForPeriod(period, dueDay) {
+    const year = Number(period.slice(0, 4));
+    const month = Number(period.slice(4, 6));
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const day = Math.min(Math.max(1, Math.trunc(dueDay ?? DEFAULT_INSTALLMENT_DUE_DAY)), lastDayOfMonth);
+    return new Date(Date.UTC(year, month - 1, day));
+}
+export function getCurrentBillingPeriod() {
+    return getCurrentPeriodInArgentina();
+}
+/** Día del mes en Argentina, para decidir si toca generar. */
+export function getCurrentDayInArgentina() {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Argentina/Cordoba",
+        day: "2-digit",
+    }).formatToParts(new Date());
+    return Number(parts.find((part) => part.type === "day")?.value ?? "0");
+}
+const BILLABLE_ROLES = [Role.PRODUCTOR, Role.EMPRESA];
+function countBillableUsers() {
+    return prisma.user.count({
+        where: { status: "ACTIVE", role: { in: BILLABLE_ROLES } },
+    });
+}
+export async function getBillingGenerationRun(period, trigger) {
+    return prisma.billingGenerationRun.findUnique({
+        where: { period_trigger: { period, trigger } },
+    });
+}
+/** Corrida sin terminar, si quedó alguna (para reanudarla desde el cron o la UI). */
+export async function getUnfinishedBillingGenerationRun() {
+    return prisma.billingGenerationRun.findFirst({
+        where: { status: BillingGenerationStatus.RUNNING },
+        orderBy: { startedAt: "asc" },
+    });
+}
+/**
+ * Crea la corrida del período (o devuelve la que ya existe, para que una doble
+ * invocación del cron no genere cuotas por duplicado).
+ */
+export async function startBillingGenerationRun(options) {
+    const period = options.period ?? getCurrentBillingPeriod();
+    const trigger = options.trigger ?? BillingGenerationTrigger.CRON;
+    const existing = await getBillingGenerationRun(period, trigger);
+    if (existing)
+        return { run: existing, alreadyExisted: true };
+    const settings = await prisma.billingSettings.findUnique({
+        where: { id: BILLING_SETTINGS_ID },
+        select: { installmentDueDay: true },
+    });
+    const dueDate = options.dueDate ?? buildDueDateForPeriod(period, settings?.installmentDueDay);
+    try {
+        const run = await prisma.billingGenerationRun.create({
+            data: {
+                period,
+                dueDate,
+                trigger,
+                totalUsers: await countBillableUsers(),
+            },
+        });
+        return { run, alreadyExisted: false };
+    }
+    catch (err) {
+        // Carrera con otra invocación del cron: nos quedamos con la que ganó.
+        if (err?.code === "P2002") {
+            const run = await getBillingGenerationRun(period, trigger);
+            if (run)
+                return { run, alreadyExisted: true };
+        }
+        throw err;
+    }
+}
+/**
+ * Procesa usuarios de la corrida en lotes mientras quede presupuesto de tiempo.
+ * Devuelve el estado para que el llamador (cron o UI) sepa si falta trabajo.
+ */
+export async function advanceBillingGenerationRun(options) {
+    const startedAt = Date.now();
+    const timeBudgetMs = options.timeBudgetMs ?? getGenerationTimeBudgetMs();
+    const batchSize = Math.min(50, Math.max(1, Math.trunc(options.batchSize ?? GENERATION_BATCH_SIZE)));
+    const run = await prisma.billingGenerationRun.findUnique({ where: { id: options.runId } });
+    if (!run)
+        throw { status: 404, message: "Corrida de generación no encontrada" };
+    if (run.status !== BillingGenerationStatus.RUNNING) {
+        return { run, done: true, batches: 0 };
+    }
+    const configuredPrice = await getConfiguredSigleaLiterPrice();
+    if (!configuredPrice || configuredPrice <= 0) {
+        const failed = await prisma.billingGenerationRun.update({
+            where: { id: run.id },
+            data: {
+                status: BillingGenerationStatus.FAILED,
+                error: "No hay un precio del litro Siglea configurado",
+                finishedAt: new Date(),
+            },
+        });
+        return { run: failed, done: true, batches: 0 };
+    }
+    const input = {
+        period: run.period,
+        dueDate: run.dueDate,
+        sigleaLiterPrice: configuredPrice,
+    };
+    const producerPlans = await getProducerPlansContext();
+    let current = run;
+    let batches = 0;
+    // Siempre se procesa al menos un lote: si el presupuesto ya estuviera
+    // consumido por las consultas previas, la corrida nunca avanzaría y cada
+    // invocación devolvería "falta trabajo" sin haber hecho ninguno.
+    while (batches === 0 || Date.now() - startedAt < timeBudgetMs) {
+        const users = await prisma.user.findMany({
+            where: { status: "ACTIVE", role: { in: BILLABLE_ROLES } },
+            include: { billingPlan: true },
+            orderBy: { id: "asc" },
+            take: batchSize,
+            ...(current.cursor ? { cursor: { id: current.cursor }, skip: 1 } : {}),
+        });
+        if (users.length === 0) {
+            current = await prisma.billingGenerationRun.update({
+                where: { id: current.id },
+                data: { status: BillingGenerationStatus.COMPLETED, finishedAt: new Date() },
+            });
+            return { run: current, done: true, batches };
+        }
+        const tally = {
+            createdCount: 0,
+            skippedDuplicates: 0,
+            skippedNoPlan: 0,
+            skippedNoBasicPlan: 0,
+            skippedNoSigleaPrice: 0,
+            skippedOverlaps: 0,
+            skippedMissingCurrentVo: 0,
+        };
+        for (const user of users) {
+            const outcome = await createInstallmentForUser(user, input, producerPlans);
+            if (outcome.status === "CREATED")
+                tally.createdCount += 1;
+            if (outcome.status === "SKIPPED_DUPLICATE")
+                tally.skippedDuplicates += 1;
+            if (outcome.status === "SKIPPED_NO_PLAN")
+                tally.skippedNoPlan += 1;
+            if (outcome.status === "SKIPPED_NO_BASIC_PLAN")
+                tally.skippedNoBasicPlan += 1;
+            if (outcome.status === "SKIPPED_NO_SIGLEA_PRICE")
+                tally.skippedNoSigleaPrice += 1;
+            if (outcome.status === "SKIPPED_OVERLAP")
+                tally.skippedOverlaps += 1;
+            if (outcome.status === "SKIPPED_MISSING_CURRENT_VO")
+                tally.skippedMissingCurrentVo += 1;
+        }
+        // El cursor se persiste junto con los contadores del lote: si la función
+        // muere después de esto, la próxima invocación arranca del usuario justo.
+        current = await prisma.billingGenerationRun.update({
+            where: { id: current.id },
+            data: {
+                cursor: users[users.length - 1].id,
+                processedUsers: { increment: users.length },
+                createdCount: { increment: tally.createdCount },
+                skippedDuplicates: { increment: tally.skippedDuplicates },
+                skippedNoPlan: { increment: tally.skippedNoPlan },
+                skippedNoBasicPlan: { increment: tally.skippedNoBasicPlan },
+                skippedNoSigleaPrice: { increment: tally.skippedNoSigleaPrice },
+                skippedOverlaps: { increment: tally.skippedOverlaps },
+                skippedMissingCurrentVo: { increment: tally.skippedMissingCurrentVo },
+            },
+        });
+        batches += 1;
+        if (users.length < batchSize) {
+            current = await prisma.billingGenerationRun.update({
+                where: { id: current.id },
+                data: { status: BillingGenerationStatus.COMPLETED, finishedAt: new Date() },
+            });
+            return { run: current, done: true, batches };
+        }
+    }
+    return { run: current, done: false, batches };
+}
+/**
+ * Punto de entrada del cron. Genera sólo el día configurado (por defecto el 1),
+ * y cualquier otro día se limita a retomar una corrida que haya quedado a medias
+ * — así una invocación cortada por timeout no queda esperando un mes.
+ */
+export async function runScheduledBillingGeneration(options = {}) {
+    const settings = await prisma.billingSettings.findUnique({
+        where: { id: BILLING_SETTINGS_ID },
+        select: { autoGenerateEnabled: true },
+    });
+    if (settings && settings.autoGenerateEnabled === false && !options.force) {
+        return { action: "DISABLED", run: null, done: true };
+    }
+    const unfinished = await getUnfinishedBillingGenerationRun();
+    if (unfinished) {
+        const advanced = await advanceBillingGenerationRun({ runId: unfinished.id });
+        return { action: "RESUMED", ...advanced };
+    }
+    const period = getCurrentBillingPeriod();
+    const isGenerationDay = getCurrentDayInArgentina() === 1;
+    const existing = await getBillingGenerationRun(period, BillingGenerationTrigger.CRON);
+    if (!isGenerationDay && !options.force) {
+        return { action: "SKIPPED_NOT_DUE", run: existing, done: true };
+    }
+    if (existing) {
+        return { action: "ALREADY_DONE", run: existing, done: true };
+    }
+    const { run } = await startBillingGenerationRun({ period, trigger: BillingGenerationTrigger.CRON });
+    const advanced = await advanceBillingGenerationRun({ runId: run.id });
+    return { action: "STARTED", ...advanced };
 }
 // Desglose estimado de la próxima cuota de un productor, con la misma lógica
 // que la generación (tramos por tambo, ventana de actividad y Plan Básico)
@@ -1097,6 +1567,10 @@ export async function markBillingInstallmentInvoiced(id) {
     return serializeInstallment(installment);
 }
 async function getLatestSigleaLiterPrice() {
+    const configuredPrice = await getConfiguredSigleaLiterPrice();
+    if (configuredPrice && configuredPrice > 0)
+        return configuredPrice;
+    // Fallback para instalaciones que todavía no configuraron el precio central.
     const latestInstallment = await prisma.billingInstallment.findFirst({
         where: { sigleaLiterPrice: { not: null } },
         orderBy: { createdAt: "desc" },
@@ -1188,6 +1662,20 @@ async function getMyBillingEstimate(userId) {
     const discountPercent = Math.min(100, manualDiscountPercent + autoDebitDiscountPercent);
     const current = applyDiscount(planGrossAmount, discountPercent);
     const autoDebitCurrent = applyDiscount(planGrossAmount, Math.min(100, manualDiscountPercent + AUTO_DEBIT_DISCOUNT_PERCENT));
+    // El plan anual cobra PRODUCER_ANNUAL_PRICE_MULTIPLIER meses en lugar de 12: la diferencia es el descuento.
+    const annualDiscountPercent = round2(((12 - PRODUCER_ANNUAL_PRICE_MULTIPLIER) / 12) * 100);
+    const monthlyGrossAmount = user.role === Role.PRODUCTOR
+        ? round2(planGrossAmount / priceMultiplier)
+        : null;
+    const annualCurrent = monthlyGrossAmount !== null
+        ? applyDiscount(round2(monthlyGrossAmount * PRODUCER_ANNUAL_PRICE_MULTIPLIER), discountPercent)
+        : null;
+    const monthlyCurrent = monthlyGrossAmount !== null
+        ? applyDiscount(monthlyGrossAmount, discountPercent)
+        : null;
+    const annualSavingAmount = monthlyCurrent && annualCurrent
+        ? round2(round2(monthlyCurrent.amount * 12) - annualCurrent.amount)
+        : null;
     return {
         available: true,
         role: user.role,
@@ -1201,6 +1689,11 @@ async function getMyBillingEstimate(userId) {
         usualDiscountPercent,
         specialPromotion,
         autoDebitDiscountPercent,
+        annualDiscountPercent,
+        annualPriceMultiplier: PRODUCER_ANNUAL_PRICE_MULTIPLIER,
+        annualSavingAmount,
+        monthlyCurrent,
+        annualCurrent,
         current,
         autoDebitCurrent,
         // Compatibilidad temporal con clientes anteriores.

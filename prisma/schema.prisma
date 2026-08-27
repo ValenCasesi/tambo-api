@@ -497,10 +497,60 @@ model BillingPlan {
 }
 
 model BillingSettings {
-  id             Int      @id
-  whatsappNumber String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  Int      @id
+  whatsappNumber      String?
+  sigleaLiterPrice    Decimal? @db.Decimal(12, 2)
+  installmentDueDay   Int?
+  autoGenerateEnabled Boolean  @default(true)
+  accountHolder       String?
+  accountTaxId        String?
+  bankName            String?
+  cbu                 String?
+  alias               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+enum BillingGenerationTrigger {
+  CRON
+  MANUAL
+}
+
+enum BillingGenerationStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// Estado de una corrida de generación de cuotas. El progreso se persiste
+/// después de cada lote, así que si la función se corta por timeout la corrida
+/// se reanuda desde `cursor` sin repetir usuarios ya procesados.
+model BillingGenerationRun {
+  id      String                   @id @default(uuid())
+  period  String
+  dueDate DateTime
+  trigger BillingGenerationTrigger
+  status  BillingGenerationStatus  @default(RUNNING)
+
+  cursor         String?
+  totalUsers     Int     @default(0)
+  processedUsers Int     @default(0)
+
+  createdCount            Int @default(0)
+  skippedDuplicates       Int @default(0)
+  skippedNoPlan           Int @default(0)
+  skippedNoBasicPlan      Int @default(0)
+  skippedNoSigleaPrice    Int @default(0)
+  skippedOverlaps         Int @default(0)
+  skippedMissingCurrentVo Int @default(0)
+
+  error      String?   @db.Text
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([period, trigger])
+  @@index([status])
 }
 
 model BillingInstallment {

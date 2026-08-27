@@ -18,6 +18,14 @@ import {
     updateBillingPlanHandler,
     updateProducerBillingCycleHandler,
     updateBillingSettingsHandler,
+    updateSigleaLiterPriceHandler,
+    repriceInstallmentsBatchHandler,
+    getSigleaRepriceStatusHandler,
+    updateBillingScheduleSettingsHandler,
+    runScheduledBillingGenerationHandler,
+    getBillingGenerationStatusHandler,
+    startBillingGenerationRunHandler,
+    advanceBillingGenerationRunHandler,
 } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 import {
@@ -34,6 +42,8 @@ const router = Router();
 router.get("/billing/me/summary", requireAuth, getMyBillingSummaryHandler);
 router.get("/billing/me/installments", requireAuth, listMyBillingInstallmentsHandler);
 router.get("/cron/billing-promotions", processBillingPromotionNotificationsHandler);
+// Cron de Vercel: se autentica con CRON_SECRET, no con sesión de admin.
+router.get("/cron/billing-installments", runScheduledBillingGenerationHandler);
 
 router.get("/plans", requireAuth, requireRole([Role.ADMIN]), getBillingPlansHandler);
 router.post("/plans", requireAuth, requireRole([Role.ADMIN]), createBillingPlanHandler);
@@ -43,6 +53,13 @@ router.put("/plans/:id", requireAuth, requireRole([Role.ADMIN]), updateBillingPl
 router.delete("/plans/:id", requireAuth, requireRole([Role.ADMIN]), deleteBillingPlanHandler);
 router.get("/billing/settings", requireAuth, requireRole([Role.ADMIN]), getBillingSettingsHandler);
 router.put("/billing/settings", requireAuth, requireRole([Role.ADMIN]), updateBillingSettingsHandler);
+router.put("/billing/settings/siglea-price", requireAuth, requireRole([Role.ADMIN]), updateSigleaLiterPriceHandler);
+router.get("/billing/settings/siglea-price/status", requireAuth, requireRole([Role.ADMIN]), getSigleaRepriceStatusHandler);
+router.put("/billing/settings/schedule", requireAuth, requireRole([Role.ADMIN]), updateBillingScheduleSettingsHandler);
+router.get("/billing/generation/status", requireAuth, requireRole([Role.ADMIN]), getBillingGenerationStatusHandler);
+router.post("/billing/generation/start", requireAuth, requireRole([Role.ADMIN]), startBillingGenerationRunHandler);
+router.post("/billing/generation/advance", requireAuth, requireRole([Role.ADMIN]), advanceBillingGenerationRunHandler);
+router.post("/billing/settings/siglea-price/reprice-batch", requireAuth, requireRole([Role.ADMIN]), repriceInstallmentsBatchHandler);
 router.put("/billing/users/:userId/cycle", requireAuth, requireRole([Role.ADMIN]), updateProducerBillingCycleHandler);
 router.get("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), listBillingPromotionsHandler);
 router.post("/billing/promotions", requireAuth, requireRole([Role.ADMIN]), createBillingPromotionHandler);

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role } from "@prisma/client";
+import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role, BillingGenerationTrigger } from "@prisma/client";
 import {
     createBillingPlan,
     deleteBillingPlan,
@@ -17,6 +17,16 @@ import {
     previewProducerBilling,
     replaceProducerTierPlans,
     updateProducerBillingCycle,
+    updateSigleaLiterPrice,
+    repriceUnpaidInstallmentsBatch,
+    getSigleaRepriceStatus,
+    updateBillingScheduleSettings,
+    runScheduledBillingGeneration,
+    getBillingGenerationRun,
+    getUnfinishedBillingGenerationRun,
+    advanceBillingGenerationRun,
+    startBillingGenerationRun,
+    getCurrentBillingPeriod,
     updateBillingPlan,
     updateBillingSettings,
 } from "../services/billing.service.js";
@@ -54,7 +64,6 @@ export const producerTiersSchema = z.object({
 const generateSchema = z.object({
     period: z.string().regex(/^\d{6}$/, "El periodo debe ser YYYYMM"),
     dueDate: z.coerce.date(),
-    sigleaLiterPrice: z.coerce.number().min(0).nullable().optional(),
     userId: z.string().uuid().optional(),
     userIds: z.array(z.string().uuid()).optional(),
     targetRole: billingRoleSchema.optional(),
@@ -81,10 +90,32 @@ const updateProducerCycleSchema = z.object({
     billingCycle: z.nativeEnum(BillingCycle),
 });
 
+const optionalText = (max: number, label: string) => z.preprocess(
+    (value) => typeof value === "string" ? (value.trim() === "" ? null : value.trim()) : value,
+    z.string().max(max, `${label} no puede superar los ${max} caracteres`).nullable().default(null)
+);
+
 const billingSettingsSchema = z.object({
     whatsappNumber: z.preprocess(
         (value) => value === "" ? null : value,
         z.string().regex(/^\d{7,15}$/, "El WhatsApp debe estar en formato internacional, solo números").nullable()
+    ),
+    accountHolder: optionalText(120, "El titular"),
+    accountTaxId: z.preprocess(
+        (value) => typeof value === "string" ? (value.replace(/\D/g, "") || null) : value,
+        z.string().regex(/^\d{11}$/, "El CUIT/CUIL debe tener 11 dígitos").nullable().default(null)
+    ),
+    bankName: optionalText(120, "El banco"),
+    cbu: z.preprocess(
+        (value) => typeof value === "string" ? (value.replace(/\D/g, "") || null) : value,
+        z.string().regex(/^\d{22}$/, "El CBU/CVU debe tener 22 dígitos").nullable().default(null)
+    ),
+    alias: z.preprocess(
+        (value) => typeof value === "string" ? (value.trim().toLowerCase() || null) : value,
+        z.string()
+            .regex(/^[a-z0-9.\-]{6,20}$/, "El alias debe tener entre 6 y 20 caracteres (letras, números, puntos o guiones)")
+            .nullable()
+            .default(null)
     ),
 });
 
@@ -119,6 +150,151 @@ export async function replaceProducerTierPlansHandler(req: Request, res: Respons
     }
 }
 
+const sigleaLiterPriceSchema = z.object({
+    sigleaLiterPrice: z.coerce
+        .number({ error: "El precio del litro Siglea debe ser un número" })
+        .positive("El precio del litro Siglea debe ser mayor a 0"),
+});
+
+export async function updateSigleaLiterPriceHandler(req: Request, res: Response) {
+    try {
+        const { sigleaLiterPrice } = sigleaLiterPriceSchema.parse(req.body);
+        const result = await updateSigleaLiterPrice(sigleaLiterPrice);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
+        console.error("updateSigleaLiterPriceHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+const repriceBatchSchema = z.object({
+    cursor: z.string().uuid().nullable().optional(),
+    batchSize: z.coerce.number().int().positive().max(100).optional(),
+});
+
+export async function repriceInstallmentsBatchHandler(req: Request, res: Response) {
+    try {
+        const parsed = repriceBatchSchema.parse(req.body ?? {});
+        const result = await repriceUnpaidInstallmentsBatch(parsed);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
+        console.error("repriceInstallmentsBatchHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function getSigleaRepriceStatusHandler(_req: Request, res: Response) {
+    try {
+        return res.status(200).json(await getSigleaRepriceStatus());
+    } catch (err) {
+        console.error("getSigleaRepriceStatusHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+const scheduleSettingsSchema = z.object({
+    installmentDueDay: z.coerce.number().int().min(1, "El día de vencimiento debe estar entre 1 y 28").max(28, "El día de vencimiento debe estar entre 1 y 28"),
+    autoGenerateEnabled: z.coerce.boolean(),
+});
+
+export async function updateBillingScheduleSettingsHandler(req: Request, res: Response) {
+    try {
+        const parsed = scheduleSettingsSchema.parse(req.body);
+        return res.status(200).json(await updateBillingScheduleSettings(parsed));
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
+        console.error("updateBillingScheduleSettingsHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+/**
+ * Cron de Vercel: genera las cuotas del mes. Procesa lo que entra en el
+ * presupuesto de tiempo y deja el progreso guardado; si queda trabajo, la
+ * próxima invocación diaria (o el admin desde la UI) lo retoma.
+ */
+export async function runScheduledBillingGenerationHandler(req: Request, res: Response) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || req.headers.authorization !== `Bearer ${secret}`) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const result = await runScheduledBillingGeneration();
+        return res.status(200).json(result);
+    } catch (err: any) {
+        console.error("runScheduledBillingGenerationHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+/** Estado de la corrida del período, para mostrarlo y reanudarlo desde el admin. */
+export async function getBillingGenerationStatusHandler(_req: Request, res: Response) {
+    try {
+        const period = getCurrentBillingPeriod();
+        const [cronRun, unfinished] = await Promise.all([
+            getBillingGenerationRun(period, BillingGenerationTrigger.CRON),
+            getUnfinishedBillingGenerationRun(),
+        ]);
+
+        return res.status(200).json({ period, cronRun, unfinishedRun: unfinished });
+    } catch (err) {
+        console.error("getBillingGenerationStatusHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+const advanceRunSchema = z.object({
+    runId: z.string().uuid().optional(),
+    batchSize: z.coerce.number().int().positive().max(50).optional(),
+});
+
+/**
+ * Avanza una corrida desde el admin: la red de seguridad para cuando el cron no
+ * llegó a completarla (o directamente no corrió).
+ */
+export async function advanceBillingGenerationRunHandler(req: Request, res: Response) {
+    try {
+        const { runId, batchSize } = advanceRunSchema.parse(req.body ?? {});
+        const targetRunId = runId ?? (await getUnfinishedBillingGenerationRun())?.id;
+        if (!targetRunId) {
+            return res.status(404).json({ error: "No hay una corrida de generación pendiente" });
+        }
+
+        // Presupuesto corto: la UI encadena los lotes y muestra el progreso.
+        const result = await advanceBillingGenerationRun({ runId: targetRunId, timeBudgetMs: 20_000, batchSize });
+        return res.status(200).json(result);
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
+        console.error("advanceBillingGenerationRunHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+/** Arranca a mano la corrida del período (por si el cron no se disparó). */
+export async function startBillingGenerationRunHandler(req: Request, res: Response) {
+    try {
+        const parsed = z.object({ period: z.string().regex(/^\d{6}$/).optional() }).parse(req.body ?? {});
+        const { run, alreadyExisted } = await startBillingGenerationRun({
+            period: parsed.period,
+            trigger: BillingGenerationTrigger.CRON,
+        });
+
+        return res.status(alreadyExisted ? 200 : 201).json({ run, alreadyExisted });
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
+        console.error("startBillingGenerationRunHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
 export async function getBillingSettingsHandler(_req: Request, res: Response) {
     try {
         const settings = await getBillingSettings();
@@ -135,7 +311,7 @@ export async function updateBillingSettingsHandler(req: Request, res: Response) 
         const settings = await updateBillingSettings(parsed);
         return res.status(200).json(settings);
     } catch (err: any) {
-        if (err?.issues) return res.status(400).json({ error: "Validation error", details: err.issues });
+        if (err?.issues) return res.status(400).json({ error: err.issues[0]?.message ?? "Validation error", details: err.issues });
         console.error("updateBillingSettingsHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
