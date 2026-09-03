@@ -122,14 +122,14 @@ test("publishes an equal-weight average with exactly 18 valid peer values", () =
     );
 });
 
-test("treats zero as data and null as missing for the per-metric threshold", () => {
+test("excludes NA values from market averages while keeping reported zeros", () => {
     const validRows = Array.from(
         { length: COMPARISON_MINIMUM_SAMPLE },
         () => ({ metric: 0 })
     );
 
     assert.deepEqual(
-        averageMetricRows([...validRows, { metric: null }], ["metric"]),
+        averageMetricRows([...validRows, { metric: null }, { metric: undefined }], ["metric"]),
         { metric: 0 }
     );
 

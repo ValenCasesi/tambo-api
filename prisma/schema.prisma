@@ -176,13 +176,13 @@ model MonthlyStatistic {
   // ==========================================
   // VARIABLES INGRESADAS (Ejemplos iniciales)
   // ==========================================
-  partosVaquillonas                  Decimal  @db.Decimal(10, 2)
-  partosVacas                        Decimal  @db.Decimal(10, 2)
-  vacasOrdene                        Decimal  @db.Decimal(10, 2)
-  vacasSecas                         Decimal  @db.Decimal(10, 2)
-  litrosUsina                        Decimal  @db.Decimal(12, 2)
-  litrosDescarte                     Decimal  @db.Decimal(10, 2)
-  litrosGuachera                     Decimal  @db.Decimal(10, 2)
+  partosVaquillonas                  Decimal? @db.Decimal(10, 2)
+  partosVacas                        Decimal? @db.Decimal(10, 2)
+  vacasOrdene                        Decimal? @db.Decimal(10, 2)
+  vacasSecas                         Decimal? @db.Decimal(10, 2)
+  litrosUsina                        Decimal? @db.Decimal(12, 2)
+  litrosDescarte                     Decimal? @db.Decimal(10, 2)
+  litrosGuachera                     Decimal? @db.Decimal(10, 2)
   ternerosMuertosPeriparto           Decimal? @db.Decimal(10, 2)
   ternerosMachosNacidosVivos         Decimal? @db.Decimal(10, 2)
   ternerasHembrasNacidasVivas        Decimal? @db.Decimal(10, 2)
@@ -214,9 +214,9 @@ model MonthlyStatistic {
   // ==========================================
   // MÉTRICAS CALCULADAS (Cacheables en la BD)
   // ==========================================
-  partosTotales                          Decimal  @db.Decimal(10, 2) // partosVaquillonas + partosVacas
-  vacasTotales                           Decimal  @db.Decimal(10, 2) // vacasOrdene + vacasSecas
-  promedioLitrosVaca                     Decimal  @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
+  partosTotales                          Decimal? @db.Decimal(10, 2) // partosVaquillonas + partosVacas
+  vacasTotales                           Decimal? @db.Decimal(10, 2) // vacasOrdene + vacasSecas
+  promedioLitrosVaca                     Decimal? @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
   porcentajePartoVaquillonas             Decimal? @db.Decimal(5, 2)
   porcentajeNatimortos                   Decimal? @db.Decimal(5, 2) // (ternerosMuertos * 100) / partosTotales
   totalTernerosNacidosVivos              Decimal? @db.Decimal(10, 2)
