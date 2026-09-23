@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { Role } from "@prisma/client";
-import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getProducerTierPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, replaceProducerTierPlansHandler, updateBillingPlanHandler, updateProducerBillingCycleHandler, updateBillingSettingsHandler, updateSigleaLiterPriceHandler, repriceInstallmentsBatchHandler, getSigleaRepriceStatusHandler, updateBillingScheduleSettingsHandler, runScheduledBillingGenerationHandler, getBillingGenerationStatusHandler, startBillingGenerationRunHandler, advanceBillingGenerationRunHandler, } from "../controller/billing.controller.js";
+import { createBillingPlanHandler, deleteBillingPlanHandler, generateBillingInstallmentsHandler, getBillingPlansHandler, getProducerTierPlansHandler, getBillingSettingsHandler, getMyBillingSummaryHandler, listBillingInstallmentsHandler, listMyBillingInstallmentsHandler, markBillingInstallmentInvoicedHandler, markBillingInstallmentPaidHandler, markBillingInstallmentPendingHandler, previewProducerBillingHandler, recalculateBillingInstallmentHandler, replaceProducerTierPlansHandler, updateBillingPlanHandler, updateProducerBillingCycleHandler, updateBillingSettingsHandler, updateSigleaLiterPriceHandler, repriceInstallmentsBatchHandler, getSigleaRepriceStatusHandler, updateBillingScheduleSettingsHandler, runScheduledBillingGenerationHandler, getBillingGenerationStatusHandler, startBillingGenerationRunHandler, advanceBillingGenerationRunHandler, } from "../controller/billing.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 import { cancelBillingPromotionHandler, createBillingPromotionHandler, getBillingPromotionAlertsHandler, listBillingPromotionsHandler, processBillingPromotionNotificationsHandler, updateBillingPromotionHandler, } from "../controller/billing-promotion.controller.js";
 const router = Router();
@@ -33,6 +33,7 @@ router.get("/billing/promotions-alerts", requireAuth, requireRole([Role.ADMIN]),
 router.get("/cuotas", requireAuth, requireRole([Role.ADMIN]), listBillingInstallmentsHandler);
 router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), previewProducerBillingHandler);
 router.post("/cuotas/generate", requireAuth, requireRole([Role.ADMIN]), generateBillingInstallmentsHandler);
+router.put("/cuotas/:id/recalculate", requireAuth, requireRole([Role.ADMIN]), recalculateBillingInstallmentHandler);
 router.put("/cuotas/:id/pay", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPaidHandler);
 router.put("/cuotas/:id/pending", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPendingHandler);
 router.put("/cuotas/:id/invoice", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentInvoicedHandler);

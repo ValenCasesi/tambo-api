@@ -1,5 +1,42 @@
 import prisma from "../prisma/client.js";
 import { EntityStatus } from "@prisma/client";
+import { buildStatsActivitySummary, getMonthlyPeriodEnd } from "./stats-activity.js";
+const monthlyStatisticInputFields = [
+    "partosVaquillonas",
+    "partosVacas",
+    "vacasOrdene",
+    "vacasSecas",
+    "litrosUsina",
+    "litrosDescarte",
+    "litrosGuachera",
+    "ternerosMuertosPeriparto",
+    "ternerosMachosNacidosVivos",
+    "ternerasHembrasNacidasVivas",
+    "cantNacimientosMellizos",
+    "ternerosMuertosGuachera",
+    "ternerosIngresadosGuachera",
+    "cantTernerasHembrasIngRecria",
+    "cantHembrasRecriaHastaServMuertas",
+    "edadVaquillonasPrimerServicioMeses",
+    "cantVacasMuertasMes",
+    "cantVacasVendidasMes",
+    "CantVaquillonasPrenadas",
+    "CantVacasPrenadas",
+    "CantVacasAbortadas",
+    "cantVaquillonasAbortadas",
+    "diasIPPS",
+    "porcentajeIPPS",
+    "cantVacasMetritis",
+    "CantVacasRetencionPlacenta",
+    "cantVacasCaidas",
+    "diasDeLeche",
+    "conteoCelulasSomaticas",
+    "conteoBacteriasTotales",
+    "casosClinicosMastitis",
+    "conteoCultivoPlacasPositivo",
+    "conteoCultivoPlacasContaminados"
+];
+const hasMonthlyStatisticInput = monthlyStatisticInputFields.map((field) => ({ [field]: { not: null } }));
 const toNullableNumber = (value) => value === null || value === undefined ? null : Number(value);
 const sumAvailableValues = (...values) => {
     const available = values.filter((value) => value !== null);
@@ -108,25 +145,28 @@ async function syncYearlyProjections(db, tamboId, year) {
             proyeccionAnualVacasVendidas = (sumCantVacasVendidasMes * 100) / (sumVacasTotales / 12);
         }
         let acumAnualAbortosVacas = null;
-        if (sumCantVacasPrenadas > 0) {
+        if (sumCantVacasPrenadas > 0 && record.porcentajeAbortoVacasMes != null) {
             acumAnualAbortosVacas = (sumCantVacasAbortadas * 100) / sumCantVacasPrenadas;
         }
         let acumAnualAbortosVaquillonas = null;
-        if (sumCantVaquillonasPrenadas > 0) {
+        if (sumCantVaquillonasPrenadas > 0 && record.porcentajeVaquillonasAbortadasMes != null) {
             acumAnualAbortosVaquillonas = (sumCantVaquillonasAbortadas * 100) / sumCantVaquillonasPrenadas;
         }
         let acumAnualCrecimientoActual = null;
-        if (sumVacasTotales > 0) {
+        if (sumVacasTotales > 0 && record.crecimientoAnual != null) {
             acumAnualCrecimientoActual = (sumCrecimientoAnual * 100) / (sumVacasTotales / 12);
         }
         let acumAnualCrecimientoFuturo = null;
-        if (sumVacasTotales > 0) {
+        if (sumVacasTotales > 0 && record.crecimientoFuturo != null) {
             acumAnualCrecimientoFuturo = (sumCrecimientoFuturo * 100) / (sumVacasTotales / 12);
         }
         // Only update these fields
         await db.monthlyStatistic.update({
             where: { id: record.id },
             data: {
+                // Recalculating cached projections is maintenance, not a user stats load.
+                // Preserve the activity timestamp so the inactivity reminder stays accurate.
+                updatedAt: record.updatedAt,
                 proyeccionAnualNatimortos,
                 proyeccionAnualTernerosMuertosGuachera,
                 proyeccionAnualMortandadRecria,
@@ -350,7 +390,7 @@ export async function getAnnualStatistics(tamboId, year, actor) {
         throw { status: 404, message: "Tambo not found" };
     await checkOwnership(tamboId, actor);
     const aggregates = await prisma.monthlyStatistic.aggregate({
-        where: { tamboId, year },
+        where: { tamboId, year, OR: hasMonthlyStatisticInput },
         _sum: {
             partosVaquillonas: true,
             partosVacas: true,
@@ -442,7 +482,7 @@ export async function getAnnualStatistics(tamboId, year, actor) {
         acumAnualCrecimientoFuturo = (sCrecimientoFuturo * 100) / (sVacasTotales / 12);
     }
     const monthsReported = await prisma.monthlyStatistic.count({
-        where: { tamboId, year }
+        where: { tamboId, year, OR: hasMonthlyStatisticInput }
     });
     const averageVacasOrdeneAnual = monthsReported > 0 ? (sVacasOrdene / monthsReported) : 0;
     const annualPromedioLitrosVaca = averageVacasOrdeneAnual > 0 ? sLitrosToques / daysInYear / averageVacasOrdeneAnual : 0;
@@ -487,7 +527,9 @@ export async function getAnnualStatistics(tamboId, year, actor) {
     };
 }
 export async function getAllMonthlyStatistics(actor) {
-    const where = actor && actor.role === "PRODUCTOR" ? { tambo: { userId: actor.id } } : {};
+    const where = actor && actor.role === "PRODUCTOR"
+        ? { tambo: { userId: actor.id }, OR: hasMonthlyStatisticInput }
+        : { OR: hasMonthlyStatisticInput };
     return await prisma.monthlyStatistic.findMany({
         where,
         orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -500,47 +542,49 @@ export async function getMonthlyStatisticsByTambo(tamboId, actor) {
         throw { status: 404, message: "Tambo not found" };
     await checkOwnership(tamboId, actor);
     return await prisma.monthlyStatistic.findMany({
-        where: { tamboId },
+        where: { tamboId, OR: hasMonthlyStatisticInput },
         orderBy: [{ year: 'desc' }, { month: 'desc' }]
     });
 }
 export async function getMyMonthlyStatsActivitySummary(userId) {
-    const activeTamboCount = await prisma.tambo.count({
+    const activeTambos = await prisma.tambo.findMany({
         where: {
             userId,
             status: EntityStatus.ACTIVE
+        },
+        select: {
+            id: true,
+            name: true,
+            stats: {
+                where: { OR: hasMonthlyStatisticInput },
+                orderBy: [{ year: "desc" }, { month: "desc" }],
+                take: 1,
+                select: { year: true, month: true, period: true }
+            }
         }
     });
-    if (activeTamboCount === 0) {
-        return {
-            shouldWarn: false,
-            lastLoadedAt: null,
-            daysWithoutStats: null
-        };
-    }
-    const latestStat = await prisma.monthlyStatistic.findFirst({
-        where: {
-            tambo: {
-                userId,
-                status: EntityStatus.ACTIVE
-            }
-        },
-        orderBy: { updatedAt: "desc" },
-        select: { updatedAt: true }
+    if (activeTambos.length === 0)
+        return buildStatsActivitySummary(0, null);
+    const now = new Date();
+    const tamboSummaries = activeTambos.map((tambo) => {
+        const latestStat = tambo.stats[0];
+        const summary = latestStat
+            ? buildStatsActivitySummary(1, getMonthlyPeriodEnd(latestStat.year, latestStat.month), now, latestStat.period)
+            : buildStatsActivitySummary(1, null, now);
+        return { tamboId: tambo.id, tamboName: tambo.name, ...summary };
     });
-    if (!latestStat) {
-        return {
-            shouldWarn: true,
-            lastLoadedAt: null,
-            daysWithoutStats: null
-        };
-    }
-    const millisecondsPerDay = 24 * 60 * 60 * 1000;
-    const daysWithoutStats = Math.floor((Date.now() - latestStat.updatedAt.getTime()) / millisecondsPerDay);
+    const staleTambos = tamboSummaries.filter((summary) => summary.shouldWarn);
+    const oldestTambo = [...tamboSummaries].sort((left, right) => {
+        if (left.lastLoadedAt === null)
+            return -1;
+        if (right.lastLoadedAt === null)
+            return 1;
+        return left.lastLoadedAt.localeCompare(right.lastLoadedAt);
+    })[0];
     return {
-        shouldWarn: daysWithoutStats > 30,
-        lastLoadedAt: latestStat.updatedAt.toISOString(),
-        daysWithoutStats
+        ...oldestTambo,
+        shouldWarn: staleTambos.length > 0,
+        staleTamboCount: staleTambos.length
     };
 }
 export async function updateMonthlyStatistic(id, data, actor) {

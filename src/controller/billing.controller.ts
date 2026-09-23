@@ -15,6 +15,7 @@ import {
     markBillingInstallmentPaid,
     markBillingInstallmentPending,
     previewProducerBilling,
+    recalculateBillingInstallment,
     replaceProducerTierPlans,
     updateProducerBillingCycle,
     updateSigleaLiterPrice,
@@ -374,6 +375,13 @@ export async function previewProducerBillingHandler(req: Request, res: Response)
         const userId = req.params.userId as string;
         const parsed = previewBillingSchema.parse(req.query);
         const preview = await previewProducerBilling(userId, parsed.period, parsed.billingCycle);
+        // Es un cálculo en vivo: no debe reutilizarse después de cambiar VO,
+        // tambos o tramos de planes.
+        res.set({
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+        });
         return res.status(200).json(preview);
     } catch (err: any) {
         if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
@@ -431,6 +439,17 @@ export async function markBillingInstallmentPaidHandler(req: Request, res: Respo
     } catch (err: any) {
         if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
         console.error("markBillingInstallmentPaidHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+
+export async function recalculateBillingInstallmentHandler(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        return res.status(200).json(await recalculateBillingInstallment(id));
+    } catch (err: any) {
+        if (err?.status && err?.message) return res.status(err.status).json({ error: err.message });
+        console.error("recalculateBillingInstallmentHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }

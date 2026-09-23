@@ -14,6 +14,7 @@ import {
     markBillingInstallmentPaidHandler,
     markBillingInstallmentPendingHandler,
     previewProducerBillingHandler,
+    recalculateBillingInstallmentHandler,
     replaceProducerTierPlansHandler,
     updateBillingPlanHandler,
     updateProducerBillingCycleHandler,
@@ -70,6 +71,7 @@ router.get("/billing/promotions-alerts", requireAuth, requireRole([Role.ADMIN]),
 router.get("/cuotas", requireAuth, requireRole([Role.ADMIN]), listBillingInstallmentsHandler);
 router.get("/cuotas/preview/:userId", requireAuth, requireRole([Role.ADMIN]), previewProducerBillingHandler);
 router.post("/cuotas/generate", requireAuth, requireRole([Role.ADMIN]), generateBillingInstallmentsHandler);
+router.put("/cuotas/:id/recalculate", requireAuth, requireRole([Role.ADMIN]), recalculateBillingInstallmentHandler);
 router.put("/cuotas/:id/pay", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPaidHandler);
 router.put("/cuotas/:id/pending", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentPendingHandler);
 router.put("/cuotas/:id/invoice", requireAuth, requireRole([Role.ADMIN]), markBillingInstallmentInvoicedHandler);

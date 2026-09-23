@@ -591,16 +591,17 @@ function matchTierPlan(tierPlans, vo) {
     }
     return best;
 }
-async function createInstallmentForUser(user, input, producerPlans) {
-    const billingCycle = user.role === Role.EMPRESA
+async function createInstallmentForUser(user, input, producerPlans, options = {}) {
+    const billingCycle = options.billingCycleOverride ?? (user.role === Role.EMPRESA
         ? getBillingCycle(user.billingPlan?.billingCycle)
-        : getBillingCycle(user.billingCycle);
+        : getBillingCycle(user.billingCycle));
     const priceMultiplier = user.role === Role.PRODUCTOR
         ? getProducerPriceMultiplier(billingCycle)
         : 1;
     const periodEnd = getBillingPeriodEnd(input.period, billingCycle);
     const existing = await prisma.billingInstallment.findFirst({
         where: {
+            ...(options.existingInstallmentId ? { id: { not: options.existingInstallmentId } } : {}),
             userId: user.id,
             period: { lte: periodEnd ?? input.period },
             OR: [
@@ -746,42 +747,76 @@ async function createInstallmentForUser(user, input, producerPlans) {
     const billingPromotion = await findBillingPromotionForDate(user.id, input.dueDate);
     const baseDiscount = billingPromotion?.discountPercent ?? user.billingDiscountPercent;
     const discount = applyDiscount(header.amount, getEffectiveDiscountPercent(baseDiscount, user.billingPaymentMethod));
+    const installmentData = {
+        userId: user.id,
+        planId: header.planId,
+        period: input.period,
+        periodEnd,
+        dueDate: input.dueDate,
+        status: discount.amount === 0
+            ? BillingInstallmentStatus.BONIFIED
+            : BillingInstallmentStatus.PENDING,
+        amount: discount.amount,
+        grossAmount: discount.grossAmount,
+        discountPercentSnapshot: discount.discountPercent,
+        discountAmount: discount.discountAmount,
+        sigleaLiterPrice: input.sigleaLiterPrice,
+        voUsed: header.voUsed,
+        billingCycleSnapshot: billingCycle,
+        priceMultiplierSnapshot: priceMultiplier,
+        billingPromotionId: billingPromotion?.id ?? null,
+        billingPromotionReasonSnapshot: billingPromotion?.reason ?? null,
+        specialDiscountPercentSnapshot: billingPromotion?.discountPercent ?? null,
+        planNameSnapshot: header.planNameSnapshot,
+        planTypeSnapshot: header.planTypeSnapshot,
+        targetRoleSnapshot: header.targetRoleSnapshot,
+        sigleaLitersSnapshot: header.sigleaLitersSnapshot,
+        fixedPriceSnapshot: header.fixedPriceSnapshot,
+    };
+    const include = {
+        user: {
+            select: { id: true, firstName: true, lastName: true, email: true, role: true, razonSocial: true },
+        },
+        plan: true,
+        items: true,
+    };
     try {
+        if (options.existingInstallmentId) {
+            const installment = await prisma.$transaction(async (tx) => {
+                const updated = await tx.billingInstallment.updateMany({
+                    where: {
+                        id: options.existingInstallmentId,
+                        status: BillingInstallmentStatus.PENDING,
+                    },
+                    data: installmentData,
+                });
+                if (updated.count !== 1) {
+                    throw { status: 409, message: "Solo se pueden recalcular cuotas pendientes o vencidas" };
+                }
+                await tx.billingInstallmentItem.deleteMany({
+                    where: { installmentId: options.existingInstallmentId },
+                });
+                if (items.length > 0) {
+                    await tx.billingInstallmentItem.createMany({
+                        data: items.map((item) => ({
+                            ...item,
+                            installmentId: options.existingInstallmentId,
+                        })),
+                    });
+                }
+                return tx.billingInstallment.findUniqueOrThrow({
+                    where: { id: options.existingInstallmentId },
+                    include,
+                });
+            });
+            return { status: "RECALCULATED", installment: serializeInstallment(installment) };
+        }
         const installment = await prisma.billingInstallment.create({
             data: {
-                userId: user.id,
-                planId: header.planId,
-                period: input.period,
-                periodEnd,
-                dueDate: input.dueDate,
-                status: discount.amount === 0
-                    ? BillingInstallmentStatus.BONIFIED
-                    : BillingInstallmentStatus.PENDING,
-                amount: discount.amount,
-                grossAmount: discount.grossAmount,
-                discountPercentSnapshot: discount.discountPercent,
-                discountAmount: discount.discountAmount,
-                sigleaLiterPrice: input.sigleaLiterPrice,
-                voUsed: header.voUsed,
-                billingCycleSnapshot: billingCycle,
-                priceMultiplierSnapshot: priceMultiplier,
-                billingPromotionId: billingPromotion?.id ?? null,
-                billingPromotionReasonSnapshot: billingPromotion?.reason ?? null,
-                specialDiscountPercentSnapshot: billingPromotion?.discountPercent ?? null,
-                planNameSnapshot: header.planNameSnapshot,
-                planTypeSnapshot: header.planTypeSnapshot,
-                targetRoleSnapshot: header.targetRoleSnapshot,
-                sigleaLitersSnapshot: header.sigleaLitersSnapshot,
-                fixedPriceSnapshot: header.fixedPriceSnapshot,
+                ...installmentData,
                 ...(items.length > 0 ? { items: { create: items } } : {}),
             },
-            include: {
-                user: {
-                    select: { id: true, firstName: true, lastName: true, email: true, role: true },
-                },
-                plan: true,
-                items: true,
-            },
+            include,
         });
         return { status: "CREATED", installment: serializeInstallment(installment) };
     }
@@ -1505,6 +1540,50 @@ export async function listMyBillingInstallments(userId, filters) {
         ...filters,
         userId,
     });
+}
+/**
+ * Recalcula una sola cuota impaga con la configuración vigente del usuario:
+ * tambos y VO, tramo/plan, precio Siglea, forma de pago y bonificación.
+ * Conserva el ciclo de la cuota original para no alterar el período cubierto.
+ */
+export async function recalculateBillingInstallment(id) {
+    const existing = await prisma.billingInstallment.findUnique({
+        where: { id },
+        include: { user: { include: { billingPlan: true } } },
+    });
+    if (!existing)
+        throw { status: 404, message: "Cuota no encontrada" };
+    if (existing.status !== BillingInstallmentStatus.PENDING) {
+        throw { status: 409, message: "Solo se pueden recalcular cuotas pendientes o vencidas" };
+    }
+    const sigleaLiterPrice = await getConfiguredSigleaLiterPrice();
+    if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
+        throw { status: 400, message: "No hay un precio del litro Siglea configurado" };
+    }
+    const result = await createInstallmentForUser(existing.user, {
+        period: existing.period,
+        dueDate: existing.dueDate,
+        sigleaLiterPrice,
+        userId: existing.userId,
+    }, await getProducerPlansContext(), {
+        existingInstallmentId: existing.id,
+        billingCycleOverride: existing.billingCycleSnapshot,
+    });
+    if (result.status === "RECALCULATED")
+        return result.installment;
+    if (result.status === "SKIPPED_NO_BASIC_PLAN") {
+        throw { status: 422, message: "No hay un Plan Básico activo para recalcular la cuota" };
+    }
+    if (result.status === "SKIPPED_NO_PLAN") {
+        throw { status: 422, message: "La configuración actual del usuario no coincide con ningún plan activo" };
+    }
+    if (result.status === "SKIPPED_MISSING_CURRENT_VO") {
+        throw { status: 422, message: "Faltan datos de VO del período para recalcular la cuota anual" };
+    }
+    if (result.status === "SKIPPED_OVERLAP") {
+        throw { status: 409, message: "Otra cuota ya cubre el período que se intenta recalcular" };
+    }
+    throw { status: 422, message: "No se pudo recalcular la cuota con los datos actuales" };
 }
 export async function markBillingInstallmentPaid(id) {
     const existing = await prisma.billingInstallment.findUnique({ where: { id } });

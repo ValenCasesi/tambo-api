@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BillingCycle, BillingInstallmentStatus, BillingPlanType, Role, BillingGenerationTrigger } from "@prisma/client";
-import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getProducerTierPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, replaceProducerTierPlans, updateProducerBillingCycle, updateSigleaLiterPrice, repriceUnpaidInstallmentsBatch, getSigleaRepriceStatus, updateBillingScheduleSettings, runScheduledBillingGeneration, getBillingGenerationRun, getUnfinishedBillingGenerationRun, advanceBillingGenerationRun, startBillingGenerationRun, getCurrentBillingPeriod, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
+import { createBillingPlan, deleteBillingPlan, generateBillingInstallments, getBillingPlans, getProducerTierPlans, getBillingSettings, getMyBillingSummary, listBillingInstallments, listMyBillingInstallments, markBillingInstallmentInvoiced, markBillingInstallmentPaid, markBillingInstallmentPending, previewProducerBilling, recalculateBillingInstallment, replaceProducerTierPlans, updateProducerBillingCycle, updateSigleaLiterPrice, repriceUnpaidInstallmentsBatch, getSigleaRepriceStatus, updateBillingScheduleSettings, runScheduledBillingGeneration, getBillingGenerationRun, getUnfinishedBillingGenerationRun, advanceBillingGenerationRun, startBillingGenerationRun, getCurrentBillingPeriod, updateBillingPlan, updateBillingSettings, } from "../services/billing.service.js";
 const billingRoleSchema = z.enum([Role.PRODUCTOR, Role.EMPRESA]);
 const planSchema = z.object({
     name: z.string().min(1, "El nombre es obligatorio"),
@@ -329,6 +329,13 @@ export async function previewProducerBillingHandler(req, res) {
         const userId = req.params.userId;
         const parsed = previewBillingSchema.parse(req.query);
         const preview = await previewProducerBilling(userId, parsed.period, parsed.billingCycle);
+        // Es un cálculo en vivo: no debe reutilizarse después de cambiar VO,
+        // tambos o tramos de planes.
+        res.set({
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+        });
         return res.status(200).json(preview);
     }
     catch (err) {
@@ -394,6 +401,18 @@ export async function markBillingInstallmentPaidHandler(req, res) {
         if (err?.status && err?.message)
             return res.status(err.status).json({ error: err.message });
         console.error("markBillingInstallmentPaidHandler:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+}
+export async function recalculateBillingInstallmentHandler(req, res) {
+    try {
+        const id = req.params.id;
+        return res.status(200).json(await recalculateBillingInstallment(id));
+    }
+    catch (err) {
+        if (err?.status && err?.message)
+            return res.status(err.status).json({ error: err.message });
+        console.error("recalculateBillingInstallmentHandler:", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 }
