@@ -995,42 +995,59 @@ async function updatePendingProducerInstallments(period, sigleaLiterPrice) {
     if (!sigleaLiterPrice || sigleaLiterPrice <= 0) {
         return [];
     }
-    return prisma.$transaction(async (tx) => {
-        // Las cuotas vencidas también permanecen como PENDING; su estado
-        // OVERDUE se calcula al serializarlas a partir de dueDate.
-        const installments = await tx.billingInstallment.findMany({
-            where: {
-                status: BillingInstallmentStatus.PENDING,
-                targetRoleSnapshot: Role.PRODUCTOR,
-                billingCycleSnapshot: BillingCycle.MONTHLY,
-                period: { lt: period },
-                sigleaLitersSnapshot: { not: null },
-            },
-            select: {
-                id: true,
-                sigleaLitersSnapshot: true,
-                discountPercentSnapshot: true,
-                items: {
-                    select: {
-                        id: true,
-                        sigleaLitersSnapshot: true,
-                    },
+    // Las cuotas vencidas también permanecen como PENDING; su estado
+    // OVERDUE se calcula al serializarlas a partir de dueDate.
+    // Leer fuera de la transacción evita mantenerla abierta mientras se
+    // recorren todas las cuotas históricas.
+    const installments = await prisma.billingInstallment.findMany({
+        where: {
+            status: BillingInstallmentStatus.PENDING,
+            targetRoleSnapshot: Role.PRODUCTOR,
+            billingCycleSnapshot: BillingCycle.MONTHLY,
+            period: { lt: period },
+            sigleaLitersSnapshot: { not: null },
+            OR: [
+                { sigleaLiterPrice: null },
+                { sigleaLiterPrice: { not: sigleaLiterPrice } },
+            ],
+        },
+        select: {
+            id: true,
+            sigleaLitersSnapshot: true,
+            discountPercentSnapshot: true,
+            items: {
+                select: {
+                    id: true,
+                    sigleaLitersSnapshot: true,
                 },
             },
-        });
-        for (const installment of installments) {
-            const recalculatedItems = installment.items
-                .filter((item) => item.sigleaLitersSnapshot !== null)
-                .map((item) => ({
-                id: item.id,
-                amount: round2(Number(item.sigleaLitersSnapshot) * sigleaLiterPrice),
-            }));
-            const grossAmount = recalculatedItems.length > 0
-                ? round2(recalculatedItems.reduce((total, item) => total + item.amount, 0))
-                : round2(Number(installment.sigleaLitersSnapshot) * sigleaLiterPrice);
-            const discount = applyDiscount(grossAmount, clampDiscountPercent(installment.discountPercentSnapshot));
-            await tx.billingInstallment.update({
-                where: { id: installment.id },
+        },
+    });
+    const updatedIds = [];
+    for (const installment of installments) {
+        const recalculatedItems = installment.items
+            .filter((item) => item.sigleaLitersSnapshot !== null)
+            .map((item) => ({
+            id: item.id,
+            amount: round2(Number(item.sigleaLitersSnapshot) * sigleaLiterPrice),
+        }));
+        const grossAmount = recalculatedItems.length > 0
+            ? round2(recalculatedItems.reduce((total, item) => total + item.amount, 0))
+            : round2(Number(installment.sigleaLitersSnapshot) * sigleaLiterPrice);
+        const discount = applyDiscount(grossAmount, clampDiscountPercent(installment.discountPercentSnapshot));
+        // La cuota y sus items se actualizan juntos, pero cada cuota tiene
+        // su propia transacción corta. Una corrida masiva ya no acumula
+        // todas las consultas dentro del timeout de una sola transacción.
+        const updated = await prisma.$transaction(async (tx) => {
+            const result = await tx.billingInstallment.updateMany({
+                where: {
+                    id: installment.id,
+                    status: BillingInstallmentStatus.PENDING,
+                    OR: [
+                        { sigleaLiterPrice: null },
+                        { sigleaLiterPrice: { not: sigleaLiterPrice } },
+                    ],
+                },
                 data: {
                     amount: discount.amount,
                     grossAmount: discount.grossAmount,
@@ -1038,15 +1055,20 @@ async function updatePendingProducerInstallments(period, sigleaLiterPrice) {
                     sigleaLiterPrice,
                 },
             });
+            if (result.count === 0)
+                return false;
             for (const item of recalculatedItems) {
                 await tx.billingInstallmentItem.update({
                     where: { id: item.id },
                     data: { amount: item.amount },
                 });
             }
-        }
-        return installments.map((installment) => installment.id);
-    }, { timeout: 30_000 });
+            return true;
+        });
+        if (updated)
+            updatedIds.push(installment.id);
+    }
+    return updatedIds;
 }
 export async function generateBillingInstallments(rawInput) {
     // El precio Siglea se administra desde la configuración de cobros: la

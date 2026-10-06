@@ -55,28 +55,17 @@ async function checkOwnership(tamboId, actor) {
         }
     }
 }
-async function withYearlyStatsLock(tamboId, year, work) {
+async function withTamboStatsLock(tamboId, work) {
     return prisma.$transaction(async (tx) => {
-        const lockName = `monthly-stats:${tamboId}:${year}`;
-        const lockRows = await tx.$queryRaw `SELECT GET_LOCK(${lockName}, 10) AS locked`;
-        const locked = Number(lockRows[0]?.locked ?? 0) === 1;
-        if (!locked) {
-            throw { status: 409, message: "No se pudo bloquear la sincronización de estadísticas. Intentá nuevamente." };
-        }
-        try {
-            return await work(tx);
-        }
-        finally {
-            try {
-                await tx.$queryRaw `SELECT RELEASE_LOCK(${lockName})`;
-            }
-            catch {
-                // The transaction connection owns the lock; ignore release errors to preserve the original result/error.
-            }
-        }
-    });
+        // El bloqueo de fila se libera al hacer commit o rollback. Así otra
+        // carga del mismo tambo no puede recalcular sobre datos sin confirmar.
+        const rows = await tx.$queryRaw `SELECT id FROM Tambo WHERE id = ${tamboId} FOR UPDATE`;
+        if (rows.length === 0)
+            throw { status: 404, message: "Tambo not found" };
+        return work(tx);
+    }, { timeout: 45_000 });
 }
-async function syncYearlyProjections(db, tamboId, year) {
+async function syncYearlyProjections(db, tamboId, year, changedMonth) {
     // Traverse all months of this year for this tambo to calculate accumulatives
     const months = await db.monthlyStatistic.findMany({
         where: { tamboId, year },
@@ -160,6 +149,9 @@ async function syncYearlyProjections(db, tamboId, year) {
         if (sumVacasTotales > 0 && record.crecimientoFuturo != null) {
             acumAnualCrecimientoFuturo = (sumCrecimientoFuturo * 100) / (sumVacasTotales / 12);
         }
+        // Un cambio en este mes no modifica los acumulados de meses anteriores.
+        if (record.month < changedMonth)
+            continue;
         // Only update these fields
         await db.monthlyStatistic.update({
             where: { id: record.id },
@@ -192,7 +184,7 @@ export async function upsertMonthlyStatistic(input, actor) {
     const month = parseInt(period.substring(4, 6), 10);
     const year = parseInt(period.substring(0, 4), 10);
     const diasMes = new Date(year, month, 0).getDate();
-    return withYearlyStatsLock(tamboId, year, async (tx) => {
+    const resultId = await withTamboStatsLock(tamboId, async (tx) => {
         const existing = await tx.monthlyStatistic.findUnique({
             where: { tamboId_period: { tamboId, period } }
         });
@@ -378,11 +370,10 @@ export async function upsertMonthlyStatistic(input, actor) {
                 }
             });
         }
-        await syncYearlyProjections(tx, tamboId, year);
-        return tx.monthlyStatistic.findUniqueOrThrow({
-            where: { id: result.id }
-        });
+        await syncYearlyProjections(tx, tamboId, year, month);
+        return result.id;
     });
+    return prisma.monthlyStatistic.findUniqueOrThrow({ where: { id: resultId } });
 }
 export async function getAnnualStatistics(tamboId, year, actor) {
     const tambo = await prisma.tambo.findUnique({ where: { id: tamboId } });
@@ -734,7 +725,7 @@ export async function updateMonthlyStatistic(id, data, actor) {
         if (conteoCultivoPlacasContaminados != null)
             porcentajeConteoPlacasContaminado = (conteoCultivoPlacasContaminados * 100) / casosClinicosMastitis;
     }
-    return withYearlyStatsLock(existing.tamboId, year, async (tx) => {
+    const resultId = await withTamboStatsLock(existing.tamboId, async (tx) => {
         const result = await tx.monthlyStatistic.update({
             where: { id },
             data: {
@@ -785,22 +776,21 @@ export async function updateMonthlyStatistic(id, data, actor) {
                 porcentajeConteoPlacasNegativo, porcentajeConteoPlacasContaminado
             }
         });
-        await syncYearlyProjections(tx, existing.tamboId, year);
-        return tx.monthlyStatistic.findUniqueOrThrow({
-            where: { id: result.id }
-        });
+        await syncYearlyProjections(tx, existing.tamboId, year, existing.month);
+        return result.id;
     });
+    return prisma.monthlyStatistic.findUniqueOrThrow({ where: { id: resultId } });
 }
 export async function deleteMonthlyStatistic(id, actor) {
     const existing = await prisma.monthlyStatistic.findUnique({ where: { id } });
     if (!existing)
         throw { status: 404, message: "Estadística mensual no encontrada" };
     await checkOwnership(existing.tamboId, actor);
-    return withYearlyStatsLock(existing.tamboId, existing.year, async (tx) => {
+    return withTamboStatsLock(existing.tamboId, async (tx) => {
         const result = await tx.monthlyStatistic.delete({
             where: { id }
         });
-        await syncYearlyProjections(tx, existing.tamboId, existing.year);
+        await syncYearlyProjections(tx, existing.tamboId, existing.year, existing.month);
         return result;
     });
 }
