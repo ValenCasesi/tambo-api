@@ -326,7 +326,8 @@ router.get("/me/activity-summary", requireAuth, requireRole(["PRODUCTOR"]), getM
  */
 router.get("/:tamboId/comparison", requireAuth, requireRole(["PRODUCTOR"]), getStatsComparisonHandler);
 
-/**
+// Endpoint deshabilitado: el front no lo usa.
+/*
  * @openapi
  * /api/stats/{tamboId}/annual/{year}:
  *  get:
@@ -354,7 +355,7 @@ router.get("/:tamboId/comparison", requireAuth, requireRole(["PRODUCTOR"]), getS
  *       404:
  *         description: Tambo not found
  */
-router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
+// router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
 
 /**
  * @openapi

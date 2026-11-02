@@ -168,7 +168,7 @@ export async function createBillingPromotion(input: BillingPromotionInput, creat
         });
         if (rows.length) await tx.billingPromotionNotification.createMany({ data: rows });
         return created;
-    });
+    }, { timeout: 15_000 });
 
     return serializeBillingPromotion({ ...promotion, user: validated.user });
 }
@@ -213,7 +213,7 @@ export async function updateBillingPromotion(id: string, input: BillingPromotion
             if (rows.length) await tx.billingPromotionNotification.createMany({ data: rows });
         }
         return updated;
-    });
+    }, { timeout: 15_000 });
 
     return serializeBillingPromotion({ ...promotion, user: validated.user });
 }
@@ -229,7 +229,7 @@ export async function cancelBillingPromotion(id: string) {
             data: { status: BillingPromotionNotificationStatus.SKIPPED },
         });
         return tx.billingPromotion.update({ where: { id }, data: { cancelledAt: new Date() } });
-    });
+    }, { timeout: 15_000 });
     return serializeBillingPromotion(promotion);
 }
 

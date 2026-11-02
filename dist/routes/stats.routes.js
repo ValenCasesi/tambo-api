@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { upsertMonthlyStatisticHandler, getAnnualStatisticsHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler, getMyMonthlyStatsActivitySummaryHandler, getStatsComparisonHandler } from "../controller/monthly-stats.controller.js";
+import { upsertMonthlyStatisticHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler, getMyMonthlyStatsActivitySummaryHandler, getStatsComparisonHandler } from "../controller/monthly-stats.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
@@ -320,7 +320,8 @@ router.get("/me/activity-summary", requireAuth, requireRole(["PRODUCTOR"]), getM
  *         description: Tambo does not belong to the authenticated producer
  */
 router.get("/:tamboId/comparison", requireAuth, requireRole(["PRODUCTOR"]), getStatsComparisonHandler);
-/**
+// Endpoint deshabilitado: el front no lo usa.
+/*
  * @openapi
  * /api/stats/{tamboId}/annual/{year}:
  *  get:
@@ -348,7 +349,7 @@ router.get("/:tamboId/comparison", requireAuth, requireRole(["PRODUCTOR"]), getS
  *       404:
  *         description: Tambo not found
  */
-router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
+// router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
 /**
  * @openapi
  * /api/stats/monthly:

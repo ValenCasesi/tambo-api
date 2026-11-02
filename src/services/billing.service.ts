@@ -313,7 +313,7 @@ export async function replaceProducerTierPlans(tiers: ProducerTierConfigInput[])
             where: { id: { in: activeIds } },
             orderBy: { minVo: "asc" },
         });
-    });
+    }, { timeout: 30_000 });
 
     return plans.map(serializePlan);
 }
@@ -1006,10 +1006,11 @@ async function createInstallmentForUser(
 
     try {
         if (options.existingInstallmentId) {
-            const installment = await prisma.$transaction(async (tx) => {
+            const installmentId = options.existingInstallmentId;
+            await prisma.$transaction(async (tx) => {
                 const updated = await tx.billingInstallment.updateMany({
                     where: {
-                        id: options.existingInstallmentId,
+                        id: installmentId,
                         status: BillingInstallmentStatus.PENDING,
                     },
                     data: installmentData,
@@ -1019,21 +1020,21 @@ async function createInstallmentForUser(
                 }
 
                 await tx.billingInstallmentItem.deleteMany({
-                    where: { installmentId: options.existingInstallmentId },
+                    where: { installmentId },
                 });
                 if (items.length > 0) {
                     await tx.billingInstallmentItem.createMany({
                         data: items.map((item) => ({
                             ...item,
-                            installmentId: options.existingInstallmentId!,
+                            installmentId,
                         })),
                     });
                 }
+            }, { timeout: 15_000 });
 
-                return tx.billingInstallment.findUniqueOrThrow({
-                    where: { id: options.existingInstallmentId },
-                    include,
-                });
+            const installment = await prisma.billingInstallment.findUniqueOrThrow({
+                where: { id: installmentId },
+                include,
             });
 
             return { status: "RECALCULATED" as const, installment: serializeInstallment(installment) };
@@ -1179,45 +1180,51 @@ export async function repriceUnpaidInstallmentsBatch(options: { cursor?: string 
 
     let repricedCount = 0;
     let skippedCount = 0;
+    let processedCount = 0;
+    const startedAt = Date.now();
 
-    if (installments.length > 0) {
-        await prisma.$transaction(async (tx) => {
-            for (const installment of installments) {
-                const recalculated = calculateRepricedInstallment(installment, sigleaLiterPrice);
-                if (!recalculated) {
-                    // Sin base snapshot no hay forma de recalcularla sin inventar datos.
-                    skippedCount += 1;
-                    continue;
-                }
+    for (const installment of installments) {
+        // El cliente continúa desde el último ID confirmado en otra request.
+        if (processedCount > 0 && Date.now() - startedAt >= 20_000) break;
+        const recalculated = calculateRepricedInstallment(installment, sigleaLiterPrice);
+        processedCount += 1;
+        if (!recalculated) {
+            // Sin base snapshot no hay forma de recalcularla sin inventar datos.
+            skippedCount += 1;
+            continue;
+        }
 
-                await tx.billingInstallment.update({
-                    where: { id: installment.id },
-                    data: {
-                        amount: recalculated.amount,
-                        grossAmount: recalculated.grossAmount,
-                        discountAmount: recalculated.discountAmount,
-                        sigleaLiterPrice,
-                    },
+        const updated = await prisma.$transaction(async (tx) => {
+            const result = await tx.billingInstallment.updateMany({
+                where: { id: installment.id, status: BillingInstallmentStatus.PENDING },
+                data: {
+                    amount: recalculated.amount,
+                    grossAmount: recalculated.grossAmount,
+                    discountAmount: recalculated.discountAmount,
+                    sigleaLiterPrice,
+                },
+            });
+            if (result.count === 0) return false;
+
+            for (const item of recalculated.items) {
+                await tx.billingInstallmentItem.update({
+                    where: { id: item.id },
+                    data: { amount: item.amount },
                 });
-
-                for (const item of recalculated.items) {
-                    await tx.billingInstallmentItem.update({
-                        where: { id: item.id },
-                        data: { amount: item.amount },
-                    });
-                }
-
-                repricedCount += 1;
             }
-        }, { timeout: 45_000 });
+            return true;
+        }, { timeout: 15_000 });
+
+        if (updated) repricedCount += 1;
+        else skippedCount += 1;
     }
 
-    const nextCursor = installments.length === batchSize
-        ? installments[installments.length - 1].id
-        : null;
+    const nextCursor = processedCount === installments.length && installments.length < batchSize
+        ? null
+        : installments[processedCount - 1].id;
 
     return {
-        processedCount: installments.length,
+        processedCount,
         repricedCount,
         skippedCount,
         nextCursor,
@@ -1333,7 +1340,7 @@ async function updatePendingProducerInstallments(
                 });
             }
             return true;
-        });
+        }, { timeout: 15_000 });
         if (updated) updatedIds.push(installment.id);
     }
 
