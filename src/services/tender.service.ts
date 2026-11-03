@@ -292,13 +292,17 @@ export async function awardTender(id: string, winnerId: string) {
     });
 }
 
+/** Elimina la licitación junto con sus pedidos y ofertas. Irreversible. */
 export async function deleteTender(id: string) {
     const tender = await prisma.tender.findUnique({ where: { id } });
     if (!tender) throw { status: 404, message: "Licitación no encontrada" };
-    if (tender.status !== TenderStatus.DRAFT) {
-        throw { status: 400, message: "Solo se puede eliminar una licitación en estado DRAFT" };
-    }
-    return await prisma.tender.delete({ where: { id } });
+
+    const [, , deleted] = await prisma.$transaction([
+        prisma.tenderRequest.deleteMany({ where: { tenderId: id } }),
+        prisma.tenderProposal.deleteMany({ where: { tenderId: id } }),
+        prisma.tender.delete({ where: { id } })
+    ]);
+    return deleted;
 }
 
 // ==========================================

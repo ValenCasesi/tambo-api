@@ -188,7 +188,7 @@ export async function rejectUserHandler(req: Request, res: Response) {
 export async function deleteUserHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const result = await deleteUser(id);
+        const result = await deleteUser(id, req.user?.id);
         return res.status(200).json(result);
     } catch (err: any) {
         if (err?.status && err?.message) {
@@ -212,3 +212,4 @@ export async function reactivateUserHandler(req: Request, res: Response) {
         return res.status(500).json({ error: "Internal server error" });
     }
 }
+

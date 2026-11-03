@@ -174,7 +174,7 @@ export async function rejectUserHandler(req, res) {
 export async function deleteUserHandler(req, res) {
     try {
         const id = req.params.id;
-        const result = await deleteUser(id);
+        const result = await deleteUser(id, req.user?.id);
         return res.status(200).json(result);
     }
     catch (err) {
