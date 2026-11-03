@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { upsertMonthlyStatisticHandler, getAnnualStatisticsHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler, getMyMonthlyStatsActivitySummaryHandler } from "../controller/monthly-stats.controller.js";
+import { upsertMonthlyStatisticHandler, getAllMonthlyStatisticsHandler, getMonthlyStatisticsByTamboHandler, updateMonthlyStatisticHandler, deleteMonthlyStatisticHandler, getMyMonthlyStatsActivitySummaryHandler, getStatsComparisonHandler } from "../controller/monthly-stats.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware.js";
 const router = Router();
 /**
@@ -282,6 +282,47 @@ router.post("/", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), upsertMonthly
 router.get("/me/activity-summary", requireAuth, requireRole(["PRODUCTOR"]), getMyMonthlyStatsActivitySummaryHandler);
 /**
  * @openapi
+ * /api/stats/{tamboId}/comparison:
+ *  get:
+ *     tags:
+ *     - Statistics
+ *     summary: Get anonymous peer averages for the visual statistics dashboard
+ *     parameters:
+ *      - name: tamboId
+ *        in: path
+ *        required: true
+ *        schema:
+ *          type: string
+ *          format: uuid
+ *      - name: year
+ *        in: query
+ *        required: true
+ *        schema:
+ *          type: integer
+ *      - name: size
+ *        in: query
+ *        schema:
+ *          type: string
+ *      - name: cuenca
+ *        in: query
+ *        schema:
+ *          type: string
+ *      - name: system
+ *        in: query
+ *        schema:
+ *          type: string
+ *     responses:
+ *       200:
+ *         description: Anonymous comparison availability and averages
+ *       400:
+ *         description: Invalid filters
+ *       403:
+ *         description: Tambo does not belong to the authenticated producer
+ */
+router.get("/:tamboId/comparison", requireAuth, requireRole(["PRODUCTOR"]), getStatsComparisonHandler);
+// Endpoint deshabilitado: el front no lo usa.
+/*
+ * @openapi
  * /api/stats/{tamboId}/annual/{year}:
  *  get:
  *     tags:
@@ -308,7 +349,7 @@ router.get("/me/activity-summary", requireAuth, requireRole(["PRODUCTOR"]), getM
  *       404:
  *         description: Tambo not found
  */
-router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
+// router.get("/:tamboId/annual/:year", requireAuth, requireRole(["ADMIN", "PRODUCTOR"]), getAnnualStatisticsHandler);
 /**
  * @openapi
  * /api/stats/monthly:

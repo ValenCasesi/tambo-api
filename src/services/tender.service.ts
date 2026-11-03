@@ -407,7 +407,7 @@ export type ProposalInput = {
     pricePerUnit: number;
     paymentMethod: string;
     logisticsConditions: string;
-    offerValidity: string;
+    offerValidity?: string;
 };
 
 export async function createProposal(tenderId: string, data: ProposalInput) {
@@ -447,7 +447,7 @@ export async function createProposal(tenderId: string, data: ProposalInput) {
             pricePerUnit: data.pricePerUnit,
             paymentMethod: data.paymentMethod,
             logisticsConditions: data.logisticsConditions,
-            offerValidity: data.offerValidity,
+            offerValidity: data.offerValidity || "No especificada",
             isSubmitted: true,
             submittedAt: now
         }
@@ -505,7 +505,10 @@ export async function getProposals(tenderId: string) {
         include: {
             company: { select: { id: true, firstName: true, lastName: true } }
         },
-        orderBy: { pricePerUnit: "asc" }
+        orderBy: [
+            { pricePerUnit: "asc" },
+            { submittedAt: "asc" }
+        ]
     });
 }
 

@@ -9,17 +9,17 @@ async function checkOwnership(tamboId, actor) {
 }
 function calcular(vacasElegidas, vacasEnCelo, vacasPreniadas) {
     // % de celo de vacas = vacasEnCelo * 100 / vacasElegidas
-    const porcentajeCelo = vacasElegidas > 0
+    const porcentajeCelo = vacasElegidas != null && vacasEnCelo != null && vacasElegidas > 0
         ? (vacasEnCelo * 100) / vacasElegidas
-        : 0;
+        : null;
     // % de preñez de vacas = vacasPreniadas * 100 / vacasEnCelo
-    const porcentajePreniez = vacasEnCelo > 0
+    const porcentajePreniez = vacasEnCelo != null && vacasPreniadas != null && vacasEnCelo > 0
         ? (vacasPreniadas * 100) / vacasEnCelo
-        : 0;
+        : null;
     // Tasa de preñez de vacas = vacasPreniadas * 100 / vacasElegidas
-    const tasaPreniez = vacasElegidas > 0
+    const tasaPreniez = vacasElegidas != null && vacasPreniadas != null && vacasElegidas > 0
         ? (vacasPreniadas * 100) / vacasElegidas
-        : 0;
+        : null;
     return { porcentajeCelo, porcentajePreniez, tasaPreniez };
 }
 export async function upsertDateStatistic(input, actor) {
@@ -80,8 +80,17 @@ export async function getAnnualDateStatistics(tamboId, year, actor) {
     if (!tambo)
         throw { status: 404, message: "Tambo no encontrado" };
     await checkOwnership(tamboId, actor);
+    const reportedCyclesWhere = {
+        tamboId,
+        year,
+        OR: [
+            { vacasElegidas: { not: null } },
+            { vacasEnCelo: { not: null } },
+            { vacasPreniadas: { not: null } }
+        ]
+    };
     const aggregates = await prisma.dateStatistic.aggregate({
-        where: { tamboId, year },
+        where: reportedCyclesWhere,
         _sum: {
             vacasElegidas: true,
             vacasEnCelo: true,
@@ -90,9 +99,9 @@ export async function getAnnualDateStatistics(tamboId, year, actor) {
         _count: { id: true }
     });
     const ciclosReportados = aggregates._count.id;
-    const totalElegidas = Number(aggregates._sum.vacasElegidas ?? 0);
-    const totalEnCelo = Number(aggregates._sum.vacasEnCelo ?? 0);
-    const totalPreniadas = Number(aggregates._sum.vacasPreniadas ?? 0);
+    const totalElegidas = aggregates._sum.vacasElegidas === null ? null : Number(aggregates._sum.vacasElegidas);
+    const totalEnCelo = aggregates._sum.vacasEnCelo === null ? null : Number(aggregates._sum.vacasEnCelo);
+    const totalPreniadas = aggregates._sum.vacasPreniadas === null ? null : Number(aggregates._sum.vacasPreniadas);
     // Recalcular sobre los totales anuales (correcto estadisticamente)
     const { porcentajeCelo, porcentajePreniez, tasaPreniez } = calcular(totalElegidas, totalEnCelo, totalPreniadas);
     return {
@@ -104,9 +113,9 @@ export async function getAnnualDateStatistics(tamboId, year, actor) {
             vacasPreniadas: totalPreniadas
         },
         calculosAnuales: {
-            porcentajeCelo: Number(porcentajeCelo.toFixed(2)),
-            porcentajePreniez: Number(porcentajePreniez.toFixed(2)),
-            tasaPreniez: Number(tasaPreniez.toFixed(2))
+            porcentajeCelo: porcentajeCelo === null ? null : Number(porcentajeCelo.toFixed(2)),
+            porcentajePreniez: porcentajePreniez === null ? null : Number(porcentajePreniez.toFixed(2)),
+            tasaPreniez: tasaPreniez === null ? null : Number(tasaPreniez.toFixed(2))
         }
     };
 }
@@ -116,9 +125,9 @@ export async function updateDateStatistic(id, data, actor) {
         throw { status: 404, message: "Estadística no encontrada" };
     await checkOwnership(existing.tamboId, actor);
     // Merge existing values with incoming partial update
-    const vacasElegidas = data.vacasElegidas !== undefined ? data.vacasElegidas : Number(existing.vacasElegidas);
-    const vacasEnCelo = data.vacasEnCelo !== undefined ? data.vacasEnCelo : Number(existing.vacasEnCelo);
-    const vacasPreniadas = data.vacasPreniadas !== undefined ? data.vacasPreniadas : Number(existing.vacasPreniadas);
+    const vacasElegidas = data.vacasElegidas !== undefined ? data.vacasElegidas : (existing.vacasElegidas === null ? null : Number(existing.vacasElegidas));
+    const vacasEnCelo = data.vacasEnCelo !== undefined ? data.vacasEnCelo : (existing.vacasEnCelo === null ? null : Number(existing.vacasEnCelo));
+    const vacasPreniadas = data.vacasPreniadas !== undefined ? data.vacasPreniadas : (existing.vacasPreniadas === null ? null : Number(existing.vacasPreniadas));
     const { porcentajeCelo, porcentajePreniez, tasaPreniez } = calcular(vacasElegidas, vacasEnCelo, vacasPreniadas);
     return await prisma.dateStatistic.update({
         where: { id },

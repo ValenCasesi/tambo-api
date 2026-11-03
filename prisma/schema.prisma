@@ -70,9 +70,31 @@ enum BillingPlanType {
   FIXED_ARS
 }
 
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum BillingPaymentMethod {
+  TRANSFER
+  AUTO_DEBIT
+}
+
 enum BillingInstallmentStatus {
   PENDING
   PAID
+  BONIFIED
+}
+
+enum BillingPromotionNotificationRecipient {
+  ADMIN
+  USER
+}
+
+enum BillingPromotionNotificationStatus {
+  PENDING
+  SENT
+  SKIPPED
 }
 
 // ==========================================
@@ -80,34 +102,39 @@ enum BillingInstallmentStatus {
 // ==========================================
 
 model User {
-  id            String       @id @default(uuid())
-  firstName     String
-  lastName      String
-  email         String       @unique
-  phone         String? // WhatsApp
-  cuit          String?      @unique
-  razonSocial   String?
-  localidad     String?
-  password      String
-  imageUrl      String?
-  role          Role
-  status        EntityStatus @default(ACTIVE)
-  termsAccepted Boolean      @default(false)
-  billingPlanId String?
+  id                     String               @id @default(uuid())
+  firstName              String
+  lastName               String
+  email                  String               @unique
+  phone                  String? // WhatsApp
+  cuit                   String?              @unique
+  razonSocial            String?
+  localidad              String?
+  password               String
+  imageUrl               String?
+  role                   Role
+  status                 EntityStatus         @default(ACTIVE)
+  termsAccepted          Boolean              @default(false)
+  billingPlanId          String?
+  billingCycle           BillingCycle         @default(MONTHLY)
+  billingDiscountPercent Decimal              @default(0) @db.Decimal(5, 2)
+  billingPaymentMethod   BillingPaymentMethod @default(TRANSFER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  tambos          Tambo[]
-  products        MarketplaceProduct[]
-  tenderRequests  TenderRequest[]
-  tenderProposals TenderProposal[]
-  wonTenders      Tender[]             @relation("TenderWinner")
-  forumPosts      ForumPost[]
-  forumComments   ForumComment[]
-  billingInstallments BillingInstallment[]
-  billingPlan     BillingPlan? @relation("UserBillingPlan", fields: [billingPlanId], references: [id], onDelete: SetNull)
+  tambos                   Tambo[]
+  products                 MarketplaceProduct[]
+  tenderRequests           TenderRequest[]
+  tenderProposals          TenderProposal[]
+  wonTenders               Tender[]             @relation("TenderWinner")
+  forumPosts               ForumPost[]
+  forumComments            ForumComment[]
+  billingInstallments      BillingInstallment[]
+  billingPromotions        BillingPromotion[]   @relation("PromotionBeneficiary")
+  createdBillingPromotions BillingPromotion[]   @relation("PromotionCreator")
+  billingPlan              BillingPlan?         @relation("UserBillingPlan", fields: [billingPlanId], references: [id], onDelete: SetNull)
 
   @@index([billingPlanId])
 }
@@ -127,9 +154,10 @@ model Tambo {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  user    User               @relation(fields: [userId], references: [id])
-  stats   MonthlyStatistic[]
-  periods DateStatistic[]
+  user         User                     @relation(fields: [userId], references: [id])
+  stats        MonthlyStatistic[]
+  periods      DateStatistic[]
+  billingItems BillingInstallmentItem[]
 
   @@index([userId])
 }
@@ -148,13 +176,13 @@ model MonthlyStatistic {
   // ==========================================
   // VARIABLES INGRESADAS (Ejemplos iniciales)
   // ==========================================
-  partosVaquillonas                  Decimal  @db.Decimal(10, 2)
-  partosVacas                        Decimal  @db.Decimal(10, 2)
-  vacasOrdene                        Decimal  @db.Decimal(10, 2)
-  vacasSecas                         Decimal  @db.Decimal(10, 2)
-  litrosUsina                        Decimal  @db.Decimal(12, 2)
-  litrosDescarte                     Decimal  @db.Decimal(10, 2)
-  litrosGuachera                     Decimal  @db.Decimal(10, 2)
+  partosVaquillonas                  Decimal? @db.Decimal(10, 2)
+  partosVacas                        Decimal? @db.Decimal(10, 2)
+  vacasOrdene                        Decimal? @db.Decimal(10, 2)
+  vacasSecas                         Decimal? @db.Decimal(10, 2)
+  litrosUsina                        Decimal? @db.Decimal(12, 2)
+  litrosDescarte                     Decimal? @db.Decimal(10, 2)
+  litrosGuachera                     Decimal? @db.Decimal(10, 2)
   ternerosMuertosPeriparto           Decimal? @db.Decimal(10, 2)
   ternerosMachosNacidosVivos         Decimal? @db.Decimal(10, 2)
   ternerasHembrasNacidasVivas        Decimal? @db.Decimal(10, 2)
@@ -186,9 +214,9 @@ model MonthlyStatistic {
   // ==========================================
   // MÉTRICAS CALCULADAS (Cacheables en la BD)
   // ==========================================
-  partosTotales                          Decimal  @db.Decimal(10, 2) // partosVaquillonas + partosVacas
-  vacasTotales                           Decimal  @db.Decimal(10, 2) // vacasOrdene + vacasSecas
-  promedioLitrosVaca                     Decimal  @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
+  partosTotales                          Decimal? @db.Decimal(10, 2) // partosVaquillonas + partosVacas
+  vacasTotales                           Decimal? @db.Decimal(10, 2) // vacasOrdene + vacasSecas
+  promedioLitrosVaca                     Decimal? @db.Decimal(10, 2) // (litrosUsina + litrosDescarte + litrosGuachera) / diasMes / vacasOrdene
   porcentajePartoVaquillonas             Decimal? @db.Decimal(5, 2)
   porcentajeNatimortos                   Decimal? @db.Decimal(5, 2) // (ternerosMuertos * 100) / partosTotales
   totalTernerosNacidosVivos              Decimal? @db.Decimal(10, 2)
@@ -250,16 +278,16 @@ model DateStatistic {
   // ==========================================
   // VARIABLES INGRESADAS (Ciclos de 21 días)
   // ==========================================
-  vacasElegidas  Decimal @db.Decimal(10, 2) // Vacas elegidas para el análisis reproductivo
-  vacasEnCelo    Decimal @db.Decimal(10, 2) // Vacas vistas en celo
-  vacasPreniadas Decimal @db.Decimal(10, 2) // Vacas preñadas
+  vacasElegidas  Decimal? @db.Decimal(10, 2) // Vacas elegidas para el análisis reproductivo
+  vacasEnCelo    Decimal? @db.Decimal(10, 2) // Vacas vistas en celo
+  vacasPreniadas Decimal? @db.Decimal(10, 2) // Vacas preñadas
 
   // ==========================================
   // MÉTRICAS CALCULADAS (Ciclos de 21 días)
   // ==========================================
-  porcentajeCelo    Decimal @db.Decimal(10, 4) // % de celo de vacas
-  porcentajePreniez Decimal @db.Decimal(10, 4) // % de preñez de vacas
-  tasaPreniez       Decimal @db.Decimal(10, 4) // Tasa de preñez de vacas
+  porcentajeCelo    Decimal? @db.Decimal(10, 4) // % de celo de vacas
+  porcentajePreniez Decimal? @db.Decimal(10, 4) // % de preñez de vacas
+  tasaPreniez       Decimal? @db.Decimal(10, 4) // Tasa de preñez de vacas
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -278,18 +306,18 @@ model DateStatistic {
 // ==========================================
 
 model MarketplaceProduct {
-  id          String       @id @default(uuid())
-  producerId  String
-  name        String
-  description String       @db.Text
-  category    String
-  price       Decimal      @db.Decimal(10, 2)
-  priceCurrency String     @default("ARS")
-  unit        String
-  images      Json // Array de URLs
-  location    String
-  isAvailable Boolean      @default(true)
-  status      EntityStatus @default(ACTIVE)
+  id            String       @id @default(uuid())
+  producerId    String
+  name          String
+  description   String       @db.Text
+  category      String
+  price         Decimal      @db.Decimal(10, 2)
+  priceCurrency String       @default("ARS")
+  unit          String
+  images        Json // Array de URLs
+  location      String
+  isAvailable   Boolean      @default(true)
+  status        EntityStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -442,10 +470,11 @@ model Sponsor {
 // ==========================================
 
 model BillingPlan {
-  id         String          @id @default(uuid())
-  name       String
-  targetRole Role
-  planType   BillingPlanType
+  id           String          @id @default(uuid())
+  name         String
+  targetRole   Role
+  planType     BillingPlanType
+  billingCycle BillingCycle    @default(MONTHLY)
 
   minVo        Decimal? @db.Decimal(10, 2)
   maxVo        Decimal? @db.Decimal(10, 2)
@@ -454,30 +483,100 @@ model BillingPlan {
 
   isActive  Boolean @default(true)
   isDefault Boolean @default(false)
+  isBasic   Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  installments BillingInstallment[]
-  assignedUsers User[] @relation("UserBillingPlan")
+  installments     BillingInstallment[]
+  installmentItems BillingInstallmentItem[]
+  assignedUsers    User[]                   @relation("UserBillingPlan")
 
   @@index([targetRole])
   @@index([isActive])
 }
 
+model BillingSettings {
+  id                  Int      @id
+  whatsappNumber      String?
+  sigleaLiterPrice    Decimal? @db.Decimal(12, 2)
+  installmentDueDay   Int?
+  autoGenerateEnabled Boolean  @default(true)
+  accountHolder       String?
+  accountTaxId        String?
+  bankName            String?
+  cbu                 String?
+  alias               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+enum BillingGenerationTrigger {
+  CRON
+  MANUAL
+}
+
+enum BillingGenerationStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// Estado de una corrida de generación de cuotas. El progreso se persiste
+/// después de cada lote, así que si la función se corta por timeout la corrida
+/// se reanuda desde `cursor` sin repetir usuarios ya procesados.
+model BillingGenerationRun {
+  id      String                   @id @default(uuid())
+  period  String
+  dueDate DateTime
+  trigger BillingGenerationTrigger
+  status  BillingGenerationStatus  @default(RUNNING)
+
+  cursor         String?
+  totalUsers     Int     @default(0)
+  processedUsers Int     @default(0)
+
+  createdCount            Int @default(0)
+  skippedDuplicates       Int @default(0)
+  skippedNoPlan           Int @default(0)
+  skippedNoBasicPlan      Int @default(0)
+  skippedNoSigleaPrice    Int @default(0)
+  skippedOverlaps         Int @default(0)
+  skippedMissingCurrentVo Int @default(0)
+
+  error      String?   @db.Text
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([period, trigger])
+  @@index([status])
+}
+
 model BillingInstallment {
-  id     String @id @default(uuid())
+  id     String  @id @default(uuid())
   userId String
   planId String?
 
-  period  String
-  dueDate DateTime
-  status  BillingInstallmentStatus @default(PENDING)
-  paidAt  DateTime?
+  period    String
+  periodEnd String?
+  dueDate   DateTime
+  status    BillingInstallmentStatus @default(PENDING)
+  paidAt    DateTime?
 
-  amount           Decimal  @db.Decimal(12, 2)
-  sigleaLiterPrice Decimal? @db.Decimal(12, 2)
-  voUsed           Decimal? @db.Decimal(10, 2)
+  amount                         Decimal      @db.Decimal(12, 2)
+  grossAmount                    Decimal      @default(0) @db.Decimal(12, 2)
+  discountPercentSnapshot        Decimal      @default(0) @db.Decimal(5, 2)
+  discountAmount                 Decimal      @default(0) @db.Decimal(12, 2)
+  sigleaLiterPrice               Decimal?     @db.Decimal(12, 2)
+  voUsed                         Decimal?     @db.Decimal(10, 2)
+  billingCycleSnapshot           BillingCycle @default(MONTHLY)
+  priceMultiplierSnapshot        Decimal      @default(1) @db.Decimal(5, 2)
+  billingPromotionId             String?
+  billingPromotionReasonSnapshot String?      @db.VarChar(500)
+  specialDiscountPercentSnapshot Decimal?     @db.Decimal(5, 2)
+  isInvoiced                     Boolean      @default(false)
+  invoicedAt                     DateTime?
 
   planNameSnapshot     String
   planTypeSnapshot     BillingPlanType
@@ -488,11 +587,81 @@ model BillingInstallment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User         @relation(fields: [userId], references: [id])
-  plan BillingPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  user             User                     @relation(fields: [userId], references: [id])
+  plan             BillingPlan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  billingPromotion BillingPromotion?        @relation(fields: [billingPromotionId], references: [id], onDelete: SetNull)
+  items            BillingInstallmentItem[]
 
   @@unique([userId, period])
   @@index([period])
   @@index([status])
   @@index([dueDate])
+  @@index([billingPromotionId])
+}
+
+model BillingPromotion {
+  id              String    @id @default(uuid())
+  userId          String
+  discountPercent Decimal   @db.Decimal(5, 2)
+  reason          String    @db.VarChar(500)
+  startDate       DateTime  @db.Date
+  endDate         DateTime  @db.Date
+  version         Int       @default(1)
+  cancelledAt     DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user          User                           @relation("PromotionBeneficiary", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy     User?                          @relation("PromotionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  installments  BillingInstallment[]
+  notifications BillingPromotionNotification[]
+
+  @@index([userId, startDate, endDate])
+  @@index([endDate])
+  @@index([cancelledAt])
+}
+
+model BillingPromotionNotification {
+  id             String                                @id @default(uuid())
+  promotionId    String
+  version        Int
+  milestoneDays  Int
+  recipientType  BillingPromotionNotificationRecipient
+  recipientEmail String
+  scheduledFor   DateTime                              @db.Date
+  status         BillingPromotionNotificationStatus    @default(PENDING)
+  sentAt         DateTime?
+  attemptCount   Int                                   @default(0)
+  lastError      String?                               @db.Text
+  createdAt      DateTime                              @default(now())
+  updatedAt      DateTime                              @updatedAt
+
+  promotion BillingPromotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@unique([promotionId, version, milestoneDays, recipientType])
+  @@index([status, scheduledFor])
+}
+
+model BillingInstallmentItem {
+  id            String  @id @default(uuid())
+  installmentId String
+  tamboId       String? // null => item de Plan Básico
+  planId        String?
+
+  tamboNameSnapshot    String?
+  voUsed               Decimal? @db.Decimal(10, 2)
+  voPeriod             String? // YYYYMM del dato usado
+  planNameSnapshot     String
+  sigleaLitersSnapshot Decimal? @db.Decimal(10, 2)
+  amount               Decimal  @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  installment BillingInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  tambo       Tambo?             @relation(fields: [tamboId], references: [id], onDelete: SetNull)
+  plan        BillingPlan?       @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([installmentId])
+  @@index([tamboId])
 }

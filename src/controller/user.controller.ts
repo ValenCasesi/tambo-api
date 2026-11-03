@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { BillingCycle, BillingPaymentMethod } from "@prisma/client";
 import { createUser, updateUser, getAllUsers, deleteUser, getPendingUsers, approveUser, rejectUser, reactivateUser, getUserTambos } from "../services/user.service.js";
 import { uploadImage } from "../services/cloudinary.service.js";
 
@@ -20,6 +21,9 @@ const createUserSchema = z.object({
     localidad: z.string().min(1, "La Localidad es obligatoria"),
     imageUrl: z.string().url().optional(),
     billingPlanId: optionalBillingPlanIdSchema,
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+    billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
+    billingPaymentMethod: z.nativeEnum(BillingPaymentMethod).optional(),
 });
 
 export async function createUserHandler(req: Request, res: Response) {
@@ -62,6 +66,9 @@ const updateUserSchema = z.object({
     localidad: z.string().optional().nullable(),
     imageUrl: z.string().url().optional().nullable(),
     billingPlanId: optionalBillingPlanIdSchema,
+    billingCycle: z.nativeEnum(BillingCycle).optional(),
+    billingDiscountPercent: z.coerce.number().min(0).max(100).optional(),
+    billingPaymentMethod: z.nativeEnum(BillingPaymentMethod).optional(),
 });
 
 export async function updateUserHandler(req: Request, res: Response) {
@@ -74,6 +81,10 @@ export async function updateUserHandler(req: Request, res: Response) {
             }
             delete req.body.role;
             delete req.body.email;
+            delete req.body.billingPlanId;
+            delete req.body.billingCycle;
+            delete req.body.billingDiscountPercent;
+            delete req.body.billingPaymentMethod;
         }
 
         let imageUrl = undefined;
@@ -143,11 +154,17 @@ export async function getPendingUsersHandler(req: Request, res: Response) {
 export async function approveUserHandler(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const result = await approveUser(id);
+        const parsed = z.object({
+            billingPlanId: optionalBillingPlanIdSchema,
+        }).parse(req.body ?? {});
+        const result = await approveUser(id, parsed.billingPlanId);
         return res.status(200).json(result);
     } catch (err: any) {
         if (err?.status && err?.message) {
             return res.status(err.status).json({ error: err.message });
+        }
+        if (err?.issues) {
+            return res.status(400).json({ error: "Validation error", details: err.issues });
         }
         console.error("approveUserHandler:", err);
         return res.status(500).json({ error: "Internal server error" });

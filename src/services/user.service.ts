@@ -1,7 +1,8 @@
-import { Role } from "@prisma/client";
+import { BillingCycle, BillingPaymentMethod, BillingPlanType, Role } from "@prisma/client";
 import prisma from "../prisma/client.js";
 import { hashPassword } from "./auth.service.js";
 import { sendMail, buildHtmlTemplate } from "./email.service.js";
+import { getUserBillingSchedule } from "./billing.service.js";
 
 type CreateUserInput = {
     firstName: string;
@@ -15,6 +16,9 @@ type CreateUserInput = {
     localidad?: string | null;
     imageUrl?: string | null;
     billingPlanId?: string | null;
+    billingCycle?: BillingCycle | string;
+    billingDiscountPercent?: number | null;
+    billingPaymentMethod?: BillingPaymentMethod | string;
 };
 
 type UserFilters = {
@@ -32,6 +36,8 @@ const normalizeSearchText = (value?: string | null) =>
 
 const splitSearchTokens = (value?: string | null) =>
     normalizeSearchText(value).split(/\s+/).filter(Boolean);
+
+const platformLoginUrl = "https://app.grupo-sinergia.com.ar/login";
 
 const getFuzzyThreshold = (length: number) => {
     if (length <= 2) return 0;
@@ -97,7 +103,21 @@ const scoreSearchMatch = (value: string, query: string) => {
 };
 
 export async function createUser(input: CreateUserInput) {
-    const { email, cuit, razonSocial, localidad, password, role = "PRODUCTOR", firstName, lastName, phone, imageUrl, billingPlanId } = input;
+    const {
+        email,
+        cuit,
+        razonSocial,
+        localidad,
+        password,
+        role = "PRODUCTOR",
+        firstName,
+        lastName,
+        phone,
+        imageUrl,
+        billingPlanId,
+        billingDiscountPercent = 0,
+        billingPaymentMethod = BillingPaymentMethod.TRANSFER,
+    } = input;
 
     // check email uniqueness
     const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -128,6 +148,9 @@ export async function createUser(input: CreateUserInput) {
             localidad,
             imageUrl,
             billingPlanId: safeBillingPlanId,
+            billingCycle: BillingCycle.MONTHLY,
+            billingDiscountPercent: billingDiscountPercent ?? 0,
+            billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod,
             status: isPending ? "PENDING" : "ACTIVE"
         },
     });
@@ -176,13 +199,19 @@ type UpdateUserInput = {
     localidad?: string | null;
     imageUrl?: string | null;
     billingPlanId?: string | null;
+    billingCycle?: BillingCycle | string;
+    billingDiscountPercent?: number | null;
+    billingPaymentMethod?: BillingPaymentMethod | string;
 };
 
 export async function updateUser(input: UpdateUserInput) {
-    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId } = input;
+    const { id, email, cuit, razonSocial, localidad, password, role, firstName, lastName, phone, imageUrl, billingPlanId, billingCycle, billingDiscountPercent, billingPaymentMethod } = input;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
+    if (billingCycle !== undefined && billingCycle !== existing.billingCycle) {
+        throw { status: 400, message: "La frecuencia de cobro se modifica desde la acción específica de facturación" };
+    }
 
     if (email && email !== existing.email) {
         const existingByEmail = await prisma.user.findUnique({ where: { email } });
@@ -200,6 +229,13 @@ export async function updateUser(input: UpdateUserInput) {
     }
 
     const nextRole = (role || existing.role) as Role;
+    const nextBillingPlanId = billingPlanId !== undefined
+        ? billingPlanId
+        : existing.billingPlanId;
+    if (existing.status === "ACTIVE" && nextRole === Role.EMPRESA && !nextBillingPlanId) {
+        throw { status: 400, message: "Las empresas activas deben tener un plan asignado" };
+    }
+
     const billingPlanUpdate = billingPlanId !== undefined
         ? { billingPlanId: await validateBillingPlanForUser(nextRole, billingPlanId) }
         : role && role !== existing.role
@@ -219,6 +255,8 @@ export async function updateUser(input: UpdateUserInput) {
             ...(imageUrl !== undefined && { imageUrl }),
             ...(role && { role: role as Role }),
             ...(hashed && { password: hashed }),
+            ...(billingDiscountPercent !== undefined && { billingDiscountPercent: billingDiscountPercent ?? 0 }),
+            ...(billingPaymentMethod !== undefined && { billingPaymentMethod: billingPaymentMethod as BillingPaymentMethod }),
             ...billingPlanUpdate,
         },
         include: {
@@ -235,6 +273,13 @@ export async function updateUser(input: UpdateUserInput) {
 export async function getAllUsers(filters: UserFilters = {}) {
     const { status: statusFilter, search, localidad } = filters;
     const whereClause: any = {};
+    const argentinaDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Argentina/Cordoba",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(new Date());
+    const today = new Date(`${argentinaDate}T00:00:00.000Z`);
     
     if (statusFilter) {
         whereClause.status = statusFilter;
@@ -246,6 +291,22 @@ export async function getAllUsers(filters: UserFilters = {}) {
         where: whereClause,
         include: {
             billingPlan: true,
+            billingPromotions: {
+                where: {
+                    cancelledAt: null,
+                    startDate: { lte: today },
+                    endDate: { gte: today },
+                },
+                select: {
+                    id: true,
+                    discountPercent: true,
+                    reason: true,
+                    startDate: true,
+                    endDate: true,
+                },
+                orderBy: { endDate: "asc" },
+                take: 1,
+            },
             _count: {
                 select: { tambos: true }
             }
@@ -284,20 +345,39 @@ export async function getAllUsers(filters: UserFilters = {}) {
         })
         .map(({ user }) => user);
 
-    return filteredUsers.map((u) => {
+    return Promise.all(filteredUsers.map(async (u) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password: _pwd, ...safe } = u;
-        return safe;
-    });
+        const { password: _pwd, billingPromotions, ...safe } = u;
+        const currentBillingPromotion = billingPromotions[0];
+        return {
+            ...safe,
+            billingSchedule: u.role === Role.PRODUCTOR
+                ? await getUserBillingSchedule(u.id, u.billingCycle)
+                : null,
+            currentBillingPromotion: currentBillingPromotion
+                ? {
+                    ...currentBillingPromotion,
+                    discountPercent: Number(currentBillingPromotion.discountPercent),
+                    startDate: currentBillingPromotion.startDate.toISOString().slice(0, 10),
+                    endDate: currentBillingPromotion.endDate.toISOString().slice(0, 10),
+                }
+                : null,
+        };
+    }));
 }
 
 async function validateBillingPlanForUser(role: Role, billingPlanId?: string | null) {
-    if (!billingPlanId || role === "ADMIN") return null;
+    // Los productores ya no admiten plan asignado manualmente: el plan se
+    // calcula automáticamente por tambo según sus VO al generar las cuotas
+    if (!billingPlanId || role !== "EMPRESA") return null;
 
     const plan = await prisma.billingPlan.findUnique({ where: { id: billingPlanId } });
     if (!plan) throw { status: 404, message: "Plan no encontrado" };
     if (!plan.isActive) throw { status: 400, message: "El plan seleccionado está inactivo" };
     if (plan.targetRole !== role) throw { status: 400, message: "El plan seleccionado no corresponde al rol del usuario" };
+    if (role === Role.EMPRESA && plan.planType !== BillingPlanType.FIXED_ARS) {
+        throw { status: 400, message: "El plan seleccionado no corresponde a una empresa" };
+    }
 
     return plan.id;
 }
@@ -336,35 +416,53 @@ export async function getPendingUsers() {
     });
 }
 
-export async function approveUser(id: string) {
+export async function approveUser(id: string, billingPlanId?: string | null) {
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
     if (existing.status !== "PENDING") throw { status: 400, message: "User is not in PENDING status" };
 
+    const safeBillingPlanId = existing.role === Role.EMPRESA
+        ? await validateBillingPlanForUser(existing.role, billingPlanId)
+        : null;
+    if (existing.role === Role.EMPRESA && !safeBillingPlanId) {
+        throw { status: 400, message: "Debés asignar un plan antes de aprobar la empresa" };
+    }
+
     const approved = await prisma.user.update({
         where: { id },
-        data: { status: "ACTIVE" }
+        data: {
+            status: "ACTIVE",
+            billingPlanId: safeBillingPlanId,
+        }
     });
 
-    sendMail(
-        existing.email,
-        "¡Bienvenido! Tu cuenta ha sido activada - Sinergia Plataforma",
-        `Hola ${existing.firstName},\n\nTenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como ${existing.role} ya se encuentra ACTIVA.\n\nPodés ingresar a la plataforma con las credenciales que creaste.\n\nSaludos,\nEl equipo de Sinergia.`,
-        buildHtmlTemplate({
-            title: "¡Tu cuenta ha sido activada!",
-            messageLines: [
-                `Hola ${existing.firstName},`,
-                `Tenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como <b>${existing.role}</b> ya se encuentra ACTIVA.`,
-                "Ya puedes ingresar a la plataforma con las credenciales que creaste."
-            ],
-            buttonText: "Iniciar Sesión",
-            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
-        })
-    ).catch(err => console.error("Error firing approved user email:", err));
+    let approvalEmailSent = true;
+    try {
+        // Esperamos la entrega al SMTP antes de terminar la solicitud. Esto evita
+        // que entornos serverless finalicen el proceso antes de iniciar el envío.
+        await sendMail(
+            existing.email,
+            "¡Bienvenido! Tu cuenta ha sido activada - Sinergia Plataforma",
+            `Hola ${existing.firstName},\n\nTenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como ${existing.role} ya se encuentra ACTIVA.\n\nPodés ingresar a la plataforma con las credenciales que creaste.\n\nSaludos,\nEl equipo de Sinergia.`,
+            buildHtmlTemplate({
+                title: "¡Tu cuenta ha sido activada!",
+                messageLines: [
+                    `Hola ${existing.firstName},`,
+                    `Tenemos el agrado de informarte que el administrador validó tus datos y tu cuenta registrada como <b>${existing.role}</b> ya se encuentra ACTIVA.`,
+                    "Ya puedes ingresar a la plataforma con las credenciales que creaste."
+                ],
+                buttonText: "Iniciar Sesión",
+                buttonUrl: platformLoginUrl
+            })
+        );
+    } catch (err) {
+        approvalEmailSent = false;
+        console.error("Error sending approved user email:", err);
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _pwd, ...safe } = approved;
-    return safe;
+    return { ...safe, approvalEmailSent };
 }
 
 export async function rejectUser(id: string) {
@@ -419,6 +517,9 @@ export async function reactivateUser(id: string) {
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
     if (existing.status === "ACTIVE") throw { status: 400, message: "User is already active" };
+    if (existing.role === Role.EMPRESA && !existing.billingPlanId) {
+        throw { status: 400, message: "Debés asignar un plan antes de reactivar la empresa" };
+    }
 
     const reactivated = await prisma.user.update({
         where: { id },
@@ -435,9 +536,9 @@ export async function reactivateUser(id: string) {
                 `Hola ${reactivated.firstName},`,
                 "Te informamos que el administrador ha rehabilitado el acceso a tu cuenta. Se han restaurado todos tus permisos.",
                 "Ya puedes ingresar nuevamente a la plataforma utilizando tus credenciales habituales."
-            ],
-            buttonText: "Iniciar Sesión",
-            buttonUrl: process.env.FRONTEND_URL || "http://localhost:3000"
+                ],
+                buttonText: "Iniciar Sesión",
+                buttonUrl: platformLoginUrl
         })
     ).catch(err => console.error("Error firing reactivated user email:", err));
 
