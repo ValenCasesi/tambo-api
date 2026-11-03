@@ -496,23 +496,6 @@ export async function rejectUser(id: string) {
     return safe;
 }
 
-export async function deleteUser(id: string) {
-    const existing = await prisma.user.findUnique({ where: { id } });
-    if (!existing) throw { status: 404, message: "User not found" };
-    if (existing.status === "DELETED") throw { status: 400, message: "User is already deleted" };
-
-    // Realizamos un borrado lógico (soft-delete) modificando el status 
-    // para evitar errores de Foreign Key Constraint con tablas relacionadas (Tambos, Foros, etc)
-    const deleted = await prisma.user.update({
-        where: { id },
-        data: { status: "DELETED" }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password: _pwd, ...safe } = deleted;
-    return safe;
-}
-
 export async function reactivateUser(id: string) {
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) throw { status: 404, message: "User not found" };
@@ -545,4 +528,95 @@ export async function reactivateUser(id: string) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _pwd, ...safe } = reactivated;
     return safe;
+}
+
+// ==========================================
+// BORRADO DE USUARIOS
+// ==========================================
+
+type Tx = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
+
+async function getDeleteTarget(id: string, actorId?: string) {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw { status: 404, message: "Usuario no encontrado" };
+    if (actorId && user.id === actorId) {
+        throw { status: 400, message: "No podés eliminar tu propia cuenta" };
+    }
+    return user;
+}
+
+/**
+ * Comentarios que hay que borrar: los del usuario, los de sus posts y todas
+ * las respuestas que cuelgan de ellos (si no, quedan referencias huérfanas).
+ */
+async function collectForumCommentIds(db: Tx, userId: string) {
+    const roots = await db.forumComment.findMany({
+        where: { OR: [{ authorId: userId }, { post: { authorId: userId } }] },
+        select: { id: true }
+    });
+    const ids = new Set(roots.map(c => c.id));
+    let frontier = [...ids];
+    while (frontier.length > 0) {
+        const replies = await db.forumComment.findMany({
+            where: { parentId: { in: frontier } },
+            select: { id: true }
+        });
+        frontier = replies.map(r => r.id).filter(rid => !ids.has(rid));
+        frontier.forEach(rid => ids.add(rid));
+    }
+    return [...ids];
+}
+
+/**
+ * Elimina al usuario y todos sus datos de la base. Irreversible.
+ */
+export async function deleteUser(id: string, actorId?: string) {
+    await getDeleteTarget(id, actorId);
+
+    await prisma.$transaction(async (tx) => {
+        // Foro: comentarios (con sus respuestas) y posts del usuario
+        const commentIds = await collectForumCommentIds(tx, id);
+        if (commentIds.length > 0) {
+            await tx.forumComment.updateMany({ where: { id: { in: commentIds } }, data: { parentId: null } });
+            await tx.forumComment.deleteMany({ where: { id: { in: commentIds } } });
+        }
+        await tx.forumPost.deleteMany({ where: { authorId: id } });
+
+        // Licitaciones: pedidos (descontando del total), ofertas y adjudicaciones
+        const requests = await tx.tenderRequest.findMany({
+            where: { producerId: id },
+            select: { tenderId: true, quantity: true }
+        });
+        for (const request of requests) {
+            await tx.tender.update({
+                where: { id: request.tenderId },
+                data: { totalPedidoTender: { decrement: Number(request.quantity) } }
+            });
+        }
+        await tx.tenderRequest.deleteMany({ where: { producerId: id } });
+        await tx.tenderProposal.deleteMany({ where: { companyId: id } });
+        await tx.tender.updateMany({ where: { winnerId: id }, data: { winnerId: null } });
+
+        // Marketplace
+        await tx.marketplaceProduct.deleteMany({ where: { producerId: id } });
+
+        // Facturación (los ítems y las notificaciones caen en cascada)
+        await tx.billingInstallment.deleteMany({ where: { userId: id } });
+        await tx.billingPromotion.deleteMany({ where: { userId: id } });
+        await tx.billingPromotion.updateMany({ where: { createdById: id }, data: { createdById: null } });
+
+        // Tambos y sus estadísticas
+        const tambos = await tx.tambo.findMany({ where: { userId: id }, select: { id: true } });
+        const tamboIds = tambos.map(t => t.id);
+        if (tamboIds.length > 0) {
+            await tx.monthlyStatistic.deleteMany({ where: { tamboId: { in: tamboIds } } });
+            await tx.dateStatistic.deleteMany({ where: { tamboId: { in: tamboIds } } });
+            await tx.billingInstallmentItem.updateMany({ where: { tamboId: { in: tamboIds } }, data: { tamboId: null } });
+            await tx.tambo.deleteMany({ where: { id: { in: tamboIds } } });
+        }
+
+        await tx.user.delete({ where: { id } });
+    }, { timeout: 30_000 });
+
+    return { id, deleted: true };
 }

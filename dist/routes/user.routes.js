@@ -202,7 +202,7 @@ router.put("/:id", requireAuth, upload.single("image"), updateUserHandler);
  *  delete:
  *     tags:
  *     - Users
- *     summary: Soft delete (suspend) a user
+ *     summary: Eliminar un usuario y todos sus datos de la base (irreversible)
  *     parameters:
  *      - name: id
  *        in: path
@@ -212,9 +212,9 @@ router.put("/:id", requireAuth, upload.single("image"), updateUserHandler);
  *          type: string
  *     responses:
  *       200:
- *         description: Deleted successfully
+ *         description: Usuario eliminado de la base
  *       400:
- *         description: User is already deleted
+ *         description: No se puede eliminar la propia cuenta
  *       404:
  *         description: User not found
  */

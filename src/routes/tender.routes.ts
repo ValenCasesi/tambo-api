@@ -230,7 +230,7 @@ router.post("/:id/award", requireAuth, requireRole(["ADMIN"]), awardTenderHandle
  * /api/tenders/{id}:
  *  delete:
  *     tags: [Tenders]
- *     summary: Admin elimina una licitación (solo en DRAFT)
+ *     summary: Admin elimina una licitación con sus pedidos y ofertas (irreversible)
  *     parameters:
  *      - name: id
  *        in: path
@@ -239,8 +239,8 @@ router.post("/:id/award", requireAuth, requireRole(["ADMIN"]), awardTenderHandle
  *     responses:
  *       200:
  *         description: Eliminada
- *       400:
- *         description: No se puede eliminar fuera de DRAFT
+ *       404:
+ *         description: Licitación no encontrada
  */
 router.delete("/:id", requireAuth, requireRole(["ADMIN"]), deleteTenderHandler);
 
